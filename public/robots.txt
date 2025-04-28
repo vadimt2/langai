@@ -1,0 +1,20 @@
+# *
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /private/
+Disallow: /*.json$
+Disallow: /*.js$
+Disallow: /*.css$
+Disallow: /404
+Disallow: /500
+
+# GPTBot
+User-agent: GPTBot
+Disallow: /
+
+# Host
+Host: https://langai.live
+
+# Sitemaps
+Sitemap: https://langai.live/sitemap.xml
