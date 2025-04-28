@@ -7,6 +7,9 @@ import { Toaster } from '@/components/ui/toaster';
 import { RecaptchaProvider } from '@/context/recaptcha-context';
 import { GoogleAnalytics } from '@next/third-parties/google';
 import StructuredData from './structured-data';
+import { ConsentProvider } from '@/components/gdpr/consent-context';
+import { ConsentBanner } from '@/components/gdpr/consent-banner';
+import { ConsentSettings } from '@/components/gdpr/consent-settings';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -96,7 +99,11 @@ export default function RootLayout({
           storageKey='translation-app-theme'
         >
           <RecaptchaProvider>
-            {children}
+            <ConsentProvider>
+              {children}
+              <ConsentBanner />
+              <ConsentSettings />
+            </ConsentProvider>
             <Toaster />
           </RecaptchaProvider>
         </ThemeProvider>
