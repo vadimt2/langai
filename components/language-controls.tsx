@@ -126,7 +126,7 @@ export default function LanguageControls({
           />
         </div>
 
-        <ModelSelector selectedModel={selectedModel} onModelChange={onModelChange} id="model-selector-mobile" />
+        {/* <ModelSelector selectedModel={selectedModel} onModelChange={onModelChange} id="model-selector-mobile" /> */}
       </div>
     </div>
   )
