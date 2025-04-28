@@ -88,7 +88,7 @@ export default function LanguageControls({
             </div>
           </div>
 
-          <ModelSelector selectedModel={selectedModel} onModelChange={onModelChange} id="model-selector" />
+          {/* <ModelSelector selectedModel={selectedModel} onModelChange={onModelChange} id="model-selector" /> */}
         </div>
       </div>
 
