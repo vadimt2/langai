@@ -1,7 +1,7 @@
 'use server';
 
 import { cookies } from 'next/headers';
-import { revalidatePath } from 'next/cache';
+import { revalidateTag } from 'next/cache';
 
 // Constants
 const SOURCE_LANGUAGE_COOKIE = 'source-language';
@@ -9,6 +9,7 @@ const TARGET_LANGUAGE_COOKIE = 'target-language';
 const COOKIE_EXPIRY = 60 * 60 * 24 * 365; // 1 year in seconds
 const DEFAULT_SOURCE_LANGUAGE = 'en';
 const DEFAULT_TARGET_LANGUAGE = 'es';
+const LANGUAGE_CACHE_TAG = 'language-preferences';
 
 // Type for language preferences
 export type LanguagePreferences = {
@@ -86,8 +87,8 @@ export async function saveSourceLanguage(
       sameSite: 'lax',
     });
 
-    // Revalidate pages to reflect the new language preference
-    revalidatePath('/');
+    // Revalidate using tag for better dynamic support
+    revalidateTag(LANGUAGE_CACHE_TAG);
     return { success: true };
   } catch (error) {
     console.error('Error saving source language:', error);
@@ -126,8 +127,8 @@ export async function saveTargetLanguage(
       sameSite: 'lax',
     });
 
-    // Revalidate pages to reflect the new language preference
-    revalidatePath('/');
+    // Revalidate using tag for better dynamic support
+    revalidateTag(LANGUAGE_CACHE_TAG);
     return { success: true };
   } catch (error) {
     console.error('Error saving target language:', error);
@@ -222,8 +223,8 @@ export async function clearLanguagePreferences(
     cookieStore.delete(SOURCE_LANGUAGE_COOKIE);
     cookieStore.delete(TARGET_LANGUAGE_COOKIE);
 
-    // Revalidate pages to reflect the cleared preferences
-    revalidatePath('/');
+    // Revalidate using tag for better dynamic support
+    revalidateTag(LANGUAGE_CACHE_TAG);
     return { success: true };
   } catch (error) {
     console.error('Error clearing language preferences:', error);

@@ -1,8 +1,15 @@
 import { Suspense } from 'react';
 import ImageTranslation from '@/components/image-translation';
-import LanguageControls from '@/components/language-controls';
 import { getLanguagePreferences } from '@/app/actions/language-preferences';
 import { getDefaultDeviceType } from '@/app/actions/device-detection';
+
+// Import using a relative import to avoid TypeScript path resolution issues
+import { LanguageControlsClient } from '../../components/language-controls-client';
+
+// Add dynamic export to prevent static rendering issues with cookies
+export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+export const revalidate = 0;
 
 export default async function ImagePage() {
   // Get language preferences
@@ -21,7 +28,7 @@ export default async function ImagePage() {
       </p>
 
       <div className='space-y-6'>
-        <LanguageControlsContainer
+        <LanguageControlsClient
           initialSourceLanguage={sourceLanguage}
           initialTargetLanguage={targetLanguage}
         />
@@ -40,26 +47,5 @@ export default async function ImagePage() {
         </Suspense>
       </div>
     </div>
-  );
-}
-
-// Container for language controls with initial values
-function LanguageControlsContainer({
-  initialSourceLanguage,
-  initialTargetLanguage,
-}: {
-  initialSourceLanguage: string;
-  initialTargetLanguage: string;
-}) {
-  return (
-    <LanguageControls
-      sourceLanguage={initialSourceLanguage}
-      targetLanguage={initialTargetLanguage}
-      selectedModel='gpt-3.5-turbo'
-      onSourceLanguageChange={() => {}}
-      onTargetLanguageChange={() => {}}
-      onModelChange={() => {}}
-      onSwitchLanguages={() => {}}
-    />
   );
 }
