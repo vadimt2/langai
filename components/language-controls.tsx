@@ -1,21 +1,28 @@
-"use client"
+'use client';
 
-import { useMemo, useCallback, memo } from "react"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowLeftRight } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { LanguageDropdown } from "@/components/language-dropdown"
-import { languages } from "@/data/languages"
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { ArrowLeftRight } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { LanguageDropdown } from '@/components/language-dropdown';
+import { languages } from '@/data/languages';
+import { useLanguageWithConsent } from '@/app/hooks/use-language-with-consent';
+import type { Language } from '@/data/languages';
 
 interface LanguageControlsProps {
-  sourceLanguage: string
-  targetLanguage: string
-  selectedModel: string
-  onSourceLanguageChange: (code: string) => void
-  onTargetLanguageChange: (code: string) => void
-  onModelChange: (model: string) => void
-  onSwitchLanguages: () => void
+  sourceLanguage: string;
+  targetLanguage: string;
+  selectedModel: string;
+  onSourceLanguageChange: (code: string) => void;
+  onTargetLanguageChange: (code: string) => void;
+  onModelChange: (model: string) => void;
+  onSwitchLanguages: () => void;
 }
 
 export default function LanguageControls({
@@ -27,62 +34,87 @@ export default function LanguageControls({
   onModelChange,
   onSwitchLanguages,
 }: LanguageControlsProps) {
-  // Memoize filtered language lists to prevent recalculation on every render
-  const sourceLanguageOptions = useMemo(
-    () => languages.filter((lang) => lang.code !== targetLanguage),
-    [targetLanguage],
-  )
+  // Initialize the consent-aware language hook
+  const { updateSourceLanguage, updateTargetLanguage, preferencesAllowed } =
+    useLanguageWithConsent(sourceLanguage, targetLanguage);
 
-  const targetLanguageOptions = useMemo(
-    () => languages.filter((lang) => lang.code !== sourceLanguage),
-    [sourceLanguage],
-  )
+  // Filter language lists
+  const sourceLanguageOptions = languages.filter(
+    (lang) => lang.code !== targetLanguage
+  );
 
-  // Memoize handlers
-  const handleSourceLanguageSelect = useCallback(
-    (language: any) => onSourceLanguageChange(language.code),
-    [onSourceLanguageChange],
-  )
+  const targetLanguageOptions = languages.filter(
+    (lang) => lang.code !== sourceLanguage
+  );
 
-  const handleTargetLanguageSelect = useCallback(
-    (language: any) => onTargetLanguageChange(language.code),
-    [onTargetLanguageChange],
-  )
+  // Handler for source language selection
+  async function handleSourceLanguageSelect(language: Language) {
+    const languageCode = language.code;
+    onSourceLanguageChange(languageCode);
+
+    // Save preference using consent-aware hook
+    await updateSourceLanguage(languageCode);
+  }
+
+  // Handler for target language selection
+  async function handleTargetLanguageSelect(language: Language) {
+    const languageCode = language.code;
+    onTargetLanguageChange(languageCode);
+
+    // Save preference using consent-aware hook
+    await updateTargetLanguage(languageCode);
+  }
+
+  // Handle language switch with cookie persistence
+  async function handleSwitchLanguages() {
+    onSwitchLanguages();
+
+    // After switching languages in the UI, also update cookies
+    // We do this with a slight delay to ensure state has been updated
+    setTimeout(async () => {
+      // The state will be flipped at this point
+      if (preferencesAllowed) {
+        // Update both languages separately since updateLanguages is no longer available
+        await updateSourceLanguage(targetLanguage);
+        await updateTargetLanguage(sourceLanguage);
+      }
+    }, 10);
+  }
 
   return (
-    <div className="mt-4">
+    <div className='mt-4'>
       {/* Desktop and tablet view - horizontal layout with grid */}
-      <div className="hidden sm:block">
-        <div className="space-y-6">
-          <div className="grid grid-cols-5 gap-2">
-            <div className="col-span-2">
-              <div className="mb-1.5">From</div>
+      <div className='hidden sm:block'>
+        <div className='space-y-6'>
+          <div className='grid grid-cols-5 gap-2'>
+            <div className='col-span-2'>
+              <div className='mb-1.5'>From</div>
               <LanguageDropdown
                 defaultValue={sourceLanguage}
                 onChange={handleSourceLanguageSelect}
-                placeholder="Select language"
+                placeholder='Select language'
                 options={sourceLanguageOptions}
               />
             </div>
 
-            <div className="flex items-end justify-center">
+            <div className='flex items-end justify-center'>
               <Button
-                variant="outline"
-                size="icon"
-                onClick={onSwitchLanguages}
-                className="rounded-full h-10 w-10 bg-background shadow-md border-2"
-                aria-label="Switch languages"
+                variant='outline'
+                size='icon'
+                onClick={handleSwitchLanguages}
+                className='rounded-full h-10 w-10 bg-background shadow-md border-2'
+                aria-label='Switch languages'
               >
-                <ArrowLeftRight className="h-5 w-5" />
+                <ArrowLeftRight className='h-5 w-5' />
               </Button>
             </div>
 
-            <div className="col-span-2">
-              <div className="mb-1.5">To</div>
+            <div className='col-span-2'>
+              <div className='mb-1.5'>To</div>
               <LanguageDropdown
                 defaultValue={targetLanguage}
                 onChange={handleTargetLanguageSelect}
-                placeholder="Select language"
+                placeholder='Select language'
                 options={targetLanguageOptions}
               />
             </div>
@@ -93,35 +125,35 @@ export default function LanguageControls({
       </div>
 
       {/* Mobile view - vertical layout */}
-      <div className="sm:hidden space-y-4">
+      <div className='sm:hidden space-y-4'>
         <div>
-          <div className="mb-1.5">From</div>
+          <div className='mb-1.5'>From</div>
           <LanguageDropdown
             defaultValue={sourceLanguage}
             onChange={handleSourceLanguageSelect}
-            placeholder="Select language"
+            placeholder='Select language'
             options={sourceLanguageOptions}
           />
         </div>
 
-        <div className="flex justify-center">
+        <div className='flex justify-center'>
           <Button
-            variant="outline"
-            size="icon"
-            onClick={onSwitchLanguages}
-            className="rounded-full h-10 w-10 bg-background shadow-md border-2"
-            aria-label="Switch languages"
+            variant='outline'
+            size='icon'
+            onClick={handleSwitchLanguages}
+            className='rounded-full h-10 w-10 bg-background shadow-md border-2'
+            aria-label='Switch languages'
           >
-            <ArrowLeftRight className="h-5 w-5" />
+            <ArrowLeftRight className='h-5 w-5' />
           </Button>
         </div>
 
         <div>
-          <div className="mb-1.5">To</div>
+          <div className='mb-1.5'>To</div>
           <LanguageDropdown
             defaultValue={targetLanguage}
             onChange={handleTargetLanguageSelect}
-            placeholder="Select language"
+            placeholder='Select language'
             options={targetLanguageOptions}
           />
         </div>
@@ -129,31 +161,35 @@ export default function LanguageControls({
         {/* <ModelSelector selectedModel={selectedModel} onModelChange={onModelChange} id="model-selector-mobile" /> */}
       </div>
     </div>
-  )
+  );
 }
 
-const ModelSelector = memo(function ModelSelector({
+function ModelSelector({
   selectedModel,
   onModelChange,
   id,
 }: {
-  selectedModel: string
-  onModelChange: (model: string) => void
-  id: string
+  selectedModel: string;
+  onModelChange: (model: string) => void;
+  id: string;
 }) {
   return (
     <div>
       <Label htmlFor={id}>Model</Label>
       <Select value={selectedModel} onValueChange={onModelChange}>
         <SelectTrigger id={id}>
-          <SelectValue placeholder="Select model" />
+          <SelectValue placeholder='Select model' />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="gpt-4-turbo">GPT-4 Turbo (High Quality)</SelectItem>
-          <SelectItem value="gpt-3.5-turbo">GPT-3.5 Turbo (Faster)</SelectItem>
+          <SelectItem value='gpt-4-turbo'>
+            GPT-4 Turbo (High Quality)
+          </SelectItem>
+          <SelectItem value='gpt-3.5-turbo'>GPT-3.5 Turbo (Faster)</SelectItem>
         </SelectContent>
       </Select>
-      <p className="text-xs text-gray-500 mt-1">Select a model based on your translation needs</p>
+      <p className='text-xs text-gray-500 mt-1'>
+        Select a model based on your translation needs
+      </p>
     </div>
-  )
-})
+  );
+}
