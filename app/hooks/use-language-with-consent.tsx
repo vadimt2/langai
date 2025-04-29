@@ -30,10 +30,15 @@ export function useLanguageWithConsent(
     let isMounted = true;
 
     const loadPreferences = async () => {
+      // Always start with the default values passed in as props
+      if (isMounted) {
+        setSourceLanguage(defaultSource);
+        setTargetLanguage(defaultTarget);
+      }
+
+      // Don't try to load from cookies if preferences are not allowed
       if (!preferencesAllowed) {
         if (isMounted) {
-          setSourceLanguage(defaultSource);
-          setTargetLanguage(defaultTarget);
           setIsLoading(false);
         }
         return;
@@ -42,15 +47,16 @@ export function useLanguageWithConsent(
       try {
         const prefs = await getLanguagePreferences();
         if (isMounted) {
-          setSourceLanguage(prefs.sourceLanguage || defaultSource);
-          setTargetLanguage(prefs.targetLanguage || defaultTarget);
+          // Only update if we got valid preferences and they differ from defaults
+          if (prefs.sourceLanguage) {
+            setSourceLanguage(prefs.sourceLanguage);
+          }
+          if (prefs.targetLanguage) {
+            setTargetLanguage(prefs.targetLanguage);
+          }
         }
       } catch (error) {
         console.error('Error fetching language preferences:', error);
-        if (isMounted) {
-          setSourceLanguage(defaultSource);
-          setTargetLanguage(defaultTarget);
-        }
       } finally {
         if (isMounted) {
           setIsLoading(false);
@@ -60,8 +66,10 @@ export function useLanguageWithConsent(
 
     // Only trigger the effect if the component is mounted and we have consent status
     if (typeof preferencesAllowed !== 'undefined') {
-      setIsLoading(true);
       loadPreferences();
+    } else {
+      // If consent state isn't available yet, at least stop loading
+      setIsLoading(false);
     }
 
     // Cleanup function to prevent state updates after unmount

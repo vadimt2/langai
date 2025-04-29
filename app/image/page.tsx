@@ -6,11 +6,6 @@ import { getDefaultDeviceType } from '@/app/actions/device-detection';
 // Import using a relative import to avoid TypeScript path resolution issues
 import { LanguageControlsClient } from '../../components/language-controls-client';
 
-// Add dynamic export to prevent static rendering issues with cookies
-export const dynamic = 'force-dynamic';
-export const fetchCache = 'force-no-store';
-export const revalidate = 0;
-
 export default async function ImagePage() {
   // Get language preferences
   const { sourceLanguage, targetLanguage } = await getLanguagePreferences();
