@@ -3,27 +3,31 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, Copy, Save, Wand2 } from 'lucide-react';
+import { Loader2, Copy, Save, Wand2, ArrowRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useHistory } from '@/context/history-context';
 import { getLanguageByCode } from '@/data/languages';
 import { useRecaptchaContext } from '@/context/recaptcha-context';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface TextTranslationProps {
   sourceLanguage: string;
   targetLanguage: string;
   model?: string;
+  onSourceLanguageChange?: (code: string) => void;
 }
 
 export default function TextTranslation({
   sourceLanguage,
   targetLanguage,
   model = 'gpt-3.5-turbo',
+  onSourceLanguageChange,
 }: TextTranslationProps) {
   const [inputText, setInputText] = useState('');
   const [translatedText, setTranslatedText] = useState('');
   const [isTranslating, setIsTranslating] = useState(false);
   const [isDetecting, setIsDetecting] = useState(false);
+  const [detectedLanguage, setDetectedLanguage] = useState<string | null>(null);
   const { toast } = useToast();
   const { addToHistory } = useHistory();
   const {
@@ -171,6 +175,8 @@ export default function TextTranslation({
     if (!inputText.trim()) return;
 
     setIsDetecting(true);
+    // Clear previous detected language
+    setDetectedLanguage(null);
 
     try {
       // Get reCAPTCHA token
@@ -220,6 +226,7 @@ export default function TextTranslation({
 
       if (data.language && data.language !== sourceLanguage) {
         const detectedLanguage = getLanguageByCode(data.language);
+        setDetectedLanguage(data.language);
 
         toast({
           title: 'Language Detected',
@@ -245,6 +252,20 @@ export default function TextTranslation({
       });
     } finally {
       setIsDetecting(false);
+    }
+  };
+
+  const switchToDetectedLanguage = () => {
+    if (detectedLanguage && onSourceLanguageChange) {
+      onSourceLanguageChange(detectedLanguage);
+      setDetectedLanguage(null); // Clear after switching
+
+      toast({
+        title: 'Language Updated',
+        description: `Source language changed to ${
+          getLanguageByCode(detectedLanguage)?.name || detectedLanguage
+        }`,
+      });
     }
   };
 
@@ -283,6 +304,26 @@ export default function TextTranslation({
           </Button>
         )}
       </div>
+
+      {detectedLanguage &&
+        detectedLanguage !== sourceLanguage &&
+        onSourceLanguageChange && (
+          <Alert className='flex items-center justify-between bg-muted'>
+            <AlertDescription className='flex-1'>
+              Detected language:{' '}
+              {getLanguageByCode(detectedLanguage)?.name || detectedLanguage}
+            </AlertDescription>
+            <Button
+              variant='outline'
+              size='sm'
+              className='ml-2 flex items-center'
+              onClick={switchToDetectedLanguage}
+            >
+              Switch to this language
+              <ArrowRight className='ml-2 h-4 w-4' />
+            </Button>
+          </Alert>
+        )}
 
       <div className='flex justify-center'>
         <Button

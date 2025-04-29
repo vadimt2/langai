@@ -130,6 +130,7 @@ export default function TranslationAppShell() {
           sourceLanguage={sourceLanguage}
           targetLanguage={targetLanguage}
           model={selectedModel}
+          onSourceLanguageChange={updateSourceLanguage}
         />
       </CardContent>
 
@@ -149,10 +150,12 @@ function TranslationTabs({
   sourceLanguage,
   targetLanguage,
   model,
+  onSourceLanguageChange,
 }: {
   sourceLanguage: string;
   targetLanguage: string;
   model: string;
+  onSourceLanguageChange: (code: string) => void;
 }) {
   return (
     <Tabs defaultValue='text' className='w-full'>
@@ -168,6 +171,7 @@ function TranslationTabs({
           sourceLanguage={sourceLanguage}
           targetLanguage={targetLanguage}
           model={model}
+          onSourceLanguageChange={onSourceLanguageChange}
         />
       </TabsContent>
 
