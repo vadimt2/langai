@@ -14,7 +14,6 @@ import {
   Trash,
   Camera,
   Image as ImageIcon2,
-  FlipHorizontal,
   CameraOff,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -45,7 +44,6 @@ export default function ImageTranslation({
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [detectedDevice, setDetectedDevice] = useState<string>(deviceType);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const frontCameraInputRef = useRef<HTMLInputElement>(null);
   const rearCameraInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -174,12 +172,6 @@ export default function ImageTranslation({
   const handleOpenGallery = () => {
     if (fileInputRef.current) {
       fileInputRef.current.click();
-    }
-  };
-
-  const handleOpenFrontCamera = () => {
-    if (frontCameraInputRef.current) {
-      frontCameraInputRef.current.click();
     }
   };
 
@@ -384,9 +376,6 @@ export default function ImageTranslation({
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-    if (frontCameraInputRef.current) {
-      frontCameraInputRef.current.value = '';
-    }
     if (rearCameraInputRef.current) {
       rearCameraInputRef.current.value = '';
     }
@@ -423,50 +412,29 @@ export default function ImageTranslation({
                 ref={rearCameraInputRef}
                 disabled={isExtracting || isTranslating}
               />
-              <input
-                type='file'
-                accept='image/*'
-                capture='user'
-                onChange={handleImageChange}
-                className='hidden'
-                id='front-camera-upload'
-                ref={frontCameraInputRef}
-                disabled={isExtracting || isTranslating}
-              />
               {isMobile ? (
                 <div className='flex flex-col space-y-4'>
                   <h3 className='text-lg font-medium text-center'>
                     Upload an Image
                   </h3>
-                  <div className='grid grid-cols-3 gap-3'>
+                  <div className='grid grid-cols-2 gap-4'>
                     <Button
                       onClick={handleOpenGallery}
                       variant='outline'
                       disabled={isExtracting || isTranslating}
-                      className='flex flex-col items-center justify-center h-28 py-6 px-2'
+                      className='flex flex-col items-center justify-center h-32 py-6 px-2'
                     >
-                      <ImageIcon2 className='h-6 w-6 mb-2' />
+                      <ImageIcon2 className='h-8 w-8 mb-2' />
                       <span className='text-sm'>Gallery</span>
                     </Button>
                     <Button
                       onClick={handleOpenRearCamera}
                       variant='outline'
                       disabled={isExtracting || isTranslating}
-                      className='flex flex-col items-center justify-center h-28 py-6 px-2'
+                      className='flex flex-col items-center justify-center h-32 py-6 px-2'
                     >
-                      <Camera className='h-6 w-6 mb-2' />
-                      <span className='text-sm'>Rear</span>
-                      <span className='text-xs text-gray-500'>Document</span>
-                    </Button>
-                    <Button
-                      onClick={handleOpenFrontCamera}
-                      variant='outline'
-                      disabled={isExtracting || isTranslating}
-                      className='flex flex-col items-center justify-center h-28 py-6 px-2'
-                    >
-                      <FlipHorizontal className='h-6 w-6 mb-2' />
-                      <span className='text-sm'>Front</span>
-                      <span className='text-xs text-gray-500'>Selfie</span>
+                      <Camera className='h-8 w-8 mb-2' />
+                      <span className='text-sm'>Camera</span>
                     </Button>
                   </div>
                   <p className='text-xs text-gray-500 text-center'>
