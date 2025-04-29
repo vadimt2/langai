@@ -44,7 +44,7 @@ export default function LanguageControls({
   );
 
   const targetLanguageOptions = languages.filter(
-    (lang) => lang.code !== sourceLanguage
+    (lang) => lang.code !== sourceLanguage && lang.code !== 'auto'
   );
 
   // Handler for source language selection
@@ -52,8 +52,11 @@ export default function LanguageControls({
     const languageCode = language.code;
     onSourceLanguageChange(languageCode);
 
-    // Save preference using consent-aware hook
-    await updateSourceLanguage(languageCode);
+    // Don't save 'auto' to preferences
+    if (languageCode !== 'auto') {
+      // Save preference using consent-aware hook
+      await updateSourceLanguage(languageCode);
+    }
   }
 
   // Handler for target language selection
