@@ -129,6 +129,38 @@ export default function ImageTranslation({
     };
   }, [isExtracting, isTranslating]);
 
+  // Add clipboard paste functionality
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      if (isExtracting || isTranslating) return;
+
+      // Check if we have items in the clipboard
+      if (e.clipboardData && e.clipboardData.items) {
+        const items = e.clipboardData.items;
+
+        // Loop through the items to find an image
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].type.indexOf('image') !== -1) {
+            const blob = items[i].getAsFile();
+            if (blob) {
+              e.preventDefault();
+              handleFile(blob);
+              break;
+            }
+          }
+        }
+      }
+    };
+
+    // Add the event listener to the document
+    document.addEventListener('paste', handlePaste);
+
+    // Cleanup
+    return () => {
+      document.removeEventListener('paste', handlePaste);
+    };
+  }, [isExtracting, isTranslating]);
+
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -459,7 +491,7 @@ export default function ImageTranslation({
                   <p className='text-sm text-gray-500 mb-2'>
                     {isDragging
                       ? 'Drop your image here'
-                      : 'Drag & drop or click to upload an image'}
+                      : 'Drag & drop, click, or paste (Ctrl+V) to upload an image'}
                   </p>
                   <p className='text-xs text-gray-400'>
                     Supported formats: JPEG, PNG, GIF, etc. (Max 5MB)
