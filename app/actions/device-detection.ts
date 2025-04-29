@@ -5,7 +5,9 @@
  * @param userAgent The user agent string from request headers
  * @returns The device type (mobile, tablet, desktop, etc.)
  */
-export function detectDeviceType(userAgent: string = ''): string {
+export async function detectDeviceType(
+  userAgent: string = ''
+): Promise<string> {
   try {
     // Check for common mobile/tablet patterns in user agent string
     const mobileRegex =
@@ -31,8 +33,8 @@ export function detectDeviceType(userAgent: string = ''): string {
  * @param userAgent The user agent string from request headers
  * @returns boolean indicating if the user is on a mobile or tablet
  */
-export function isMobileDevice(userAgent: string = ''): boolean {
-  const deviceType = detectDeviceType(userAgent);
+export async function isMobileDevice(userAgent: string = ''): Promise<boolean> {
+  const deviceType = await detectDeviceType(userAgent);
   return deviceType === 'mobile' || deviceType === 'tablet';
 }
 
