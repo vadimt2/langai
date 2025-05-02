@@ -9,16 +9,12 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import TextTranslation from '@/components/text-translation';
-import ImageTranslation from '@/components/image-translation';
-import DocumentTranslation from '@/components/document-translation';
 import LanguageControls from '@/components/language-controls';
-import AudioTranslation from './audio-translation';
 import { clearLanguagePreferences } from '@/app/actions/language-preferences';
 import { Button } from './ui/button';
 import { RotateCcw, Check } from 'lucide-react';
 import { useLanguageWithConsent } from '@/app/hooks/use-language-with-consent';
+import { TranslationTabs } from './translation-tabs';
 
 // Loading component
 function LoadingState() {
@@ -143,61 +139,5 @@ export default function TranslationAppShell() {
         </p>
       </CardFooter>
     </Card>
-  );
-}
-
-function TranslationTabs({
-  sourceLanguage,
-  targetLanguage,
-  model,
-  onSourceLanguageChange,
-}: {
-  sourceLanguage: string;
-  targetLanguage: string;
-  model: string;
-  onSourceLanguageChange: (code: string) => void;
-}) {
-  return (
-    <Tabs defaultValue='text' className='w-full'>
-      <TabsList className='grid w-full grid-cols-4'>
-        <TabsTrigger value='text'>Text</TabsTrigger>
-        <TabsTrigger value='voice'>Voice</TabsTrigger>
-        <TabsTrigger value='image'>Image</TabsTrigger>
-        <TabsTrigger value='document'>Document</TabsTrigger>
-      </TabsList>
-
-      <TabsContent value='text'>
-        <TextTranslation
-          sourceLanguage={sourceLanguage}
-          targetLanguage={targetLanguage}
-          model={model}
-          onSourceLanguageChange={onSourceLanguageChange}
-        />
-      </TabsContent>
-
-      <TabsContent value='voice' className='mt-0'>
-        <AudioTranslation
-          sourceLanguage={sourceLanguage}
-          targetLanguage={targetLanguage}
-          model={model}
-        />
-      </TabsContent>
-
-      <TabsContent value='image'>
-        <ImageTranslation
-          sourceLanguage={sourceLanguage}
-          targetLanguage={targetLanguage}
-          model={model}
-        />
-      </TabsContent>
-
-      <TabsContent value='document'>
-        <DocumentTranslation
-          sourceLanguage={sourceLanguage}
-          targetLanguage={targetLanguage}
-          model={model}
-        />
-      </TabsContent>
-    </Tabs>
   );
 }

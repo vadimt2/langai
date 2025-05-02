@@ -1111,9 +1111,9 @@ export default function DocumentTranslation({
                     disabled={!fileContent.trim()}
                     className='w-full'
                   >
-                    Translate Document
-                  </Button>
-                )}
+                  Translate Document
+                </Button>
+              )}
             </div>
           )}
         </CardContent>

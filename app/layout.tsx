@@ -10,6 +10,7 @@ import StructuredData from './structured-data';
 import { ConsentProvider } from '@/components/gdpr/consent-context';
 import { ConsentBanner } from '@/components/gdpr/consent-banner';
 import { ConsentSettings } from '@/components/gdpr/consent-settings';
+import { Footer } from '@/components/footer';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -100,7 +101,10 @@ export default function RootLayout({
         >
           <RecaptchaProvider>
             <ConsentProvider>
-              {children}
+              <div className='flex min-h-screen flex-col'>
+                <main className='flex-1'>{children}</main>
+                <Footer />
+              </div>
               <ConsentBanner />
               <ConsentSettings />
             </ConsentProvider>
