@@ -11,6 +11,7 @@ import { ConsentProvider } from '@/components/gdpr/consent-context';
 import { ConsentBanner } from '@/components/gdpr/consent-banner';
 import { ConsentSettings } from '@/components/gdpr/consent-settings';
 import { Footer } from '@/components/footer';
+import { Navbar } from '@/components/ui/navbar';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -102,6 +103,7 @@ export default function RootLayout({
           <RecaptchaProvider>
             <ConsentProvider>
               <div className='flex min-h-screen flex-col'>
+                <Navbar />
                 <main className='flex-1'>{children}</main>
                 <Footer />
               </div>

@@ -1,5 +1,6 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
+import ContactForm from './contact-form';
 
 export const metadata: Metadata = {
   title: 'Contact Us | LangAI Translation',
@@ -21,73 +22,7 @@ export default function ContactPage() {
             our team will get back to you as soon as possible.
           </p>
 
-          <form className='space-y-6'>
-            <div className='space-y-2'>
-              <label htmlFor='name' className='block text-sm font-medium'>
-                Name
-              </label>
-              <input
-                type='text'
-                id='name'
-                className='w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background'
-                placeholder='Your name'
-                required
-              />
-            </div>
-
-            <div className='space-y-2'>
-              <label htmlFor='email' className='block text-sm font-medium'>
-                Email
-              </label>
-              <input
-                type='email'
-                id='email'
-                className='w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background'
-                placeholder='your.email@example.com'
-                required
-              />
-            </div>
-
-            <div className='space-y-2'>
-              <label htmlFor='subject' className='block text-sm font-medium'>
-                Subject
-              </label>
-              <select
-                id='subject'
-                className='w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background'
-                required
-              >
-                <option value=''>Select a subject</option>
-                <option value='general'>General Inquiry</option>
-                <option value='support'>Technical Support</option>
-                <option value='feedback'>Feedback</option>
-                <option value='partnership'>Partnership Opportunity</option>
-                <option value='billing'>Billing Question</option>
-              </select>
-            </div>
-
-            <div className='space-y-2'>
-              <label htmlFor='message' className='block text-sm font-medium'>
-                Message
-              </label>
-              <textarea
-                id='message'
-                rows={5}
-                className='w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background'
-                placeholder='Your message...'
-                required
-              ></textarea>
-            </div>
-
-            <div>
-              <button
-                type='submit'
-                className='bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md text-sm font-medium'
-              >
-                Send Message
-              </button>
-            </div>
-          </form>
+          <ContactForm />
         </section>
 
         <section>
