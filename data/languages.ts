@@ -9,8 +9,8 @@ export interface Language {
 const languagesList: Language[] = [
   {
     code: 'auto',
-    name: 'Detect Language',
-    nativeName: 'Auto Detect',
+    name: 'Auto-Detect Language',
+    nativeName: 'Auto-Detect',
     countryCode: 'un',
   },
   { code: 'en', name: 'English', nativeName: 'English', countryCode: 'gb' },
