@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, Copy, Save, Wand2, ArrowRight, X } from 'lucide-react';
+import { Loader2, Copy, Save, Wand2, ArrowRight, X, Play } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useHistory } from '@/context/history-context';
 import { getLanguageByCode } from '@/data/languages';
@@ -27,6 +27,7 @@ export default function TextTranslation({
   const [translatedText, setTranslatedText] = useState('');
   const [isTranslating, setIsTranslating] = useState(false);
   const [isDetecting, setIsDetecting] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [detectedLanguage, setDetectedLanguage] = useState<string | null>(null);
   const { toast } = useToast();
   const { addToHistory } = useHistory();
@@ -168,6 +169,30 @@ export default function TextTranslation({
         title: 'Saved',
         description: 'Translation saved to history',
       });
+    }
+  };
+
+  const handlePlay = () => {
+    if (translatedText && !isPlaying) {
+      setIsPlaying(true);
+
+      const utterance = new SpeechSynthesisUtterance(translatedText);
+      utterance.lang = targetLanguage;
+
+      utterance.onend = () => {
+        setIsPlaying(false);
+      };
+
+      utterance.onerror = () => {
+        setIsPlaying(false);
+        toast({
+          title: 'Playback Error',
+          description: 'Failed to play the translation audio',
+          variant: 'destructive',
+        });
+      };
+
+      window.speechSynthesis.speak(utterance);
     }
   };
 
@@ -393,6 +418,17 @@ export default function TextTranslation({
                 >
                   <Copy className='h-4 w-4 mr-1' />
                   Copy
+                </Button>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  onClick={handlePlay}
+                  disabled={isPlaying}
+                  title='Listen to translation'
+                  className='h-8 px-2'
+                >
+                  <Play className='h-4 w-4 mr-1' />
+                  {isPlaying ? 'Playing...' : 'Play'}
                 </Button>
                 <Button
                   variant='ghost'
