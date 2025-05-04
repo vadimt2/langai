@@ -45,7 +45,8 @@ const navItems = [
   },
 ];
 
-export function Navbar() {
+// The main component that uses useSearchParams wrapped in Suspense
+function NavbarClient() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
@@ -192,6 +193,38 @@ export function Navbar() {
             ))}
           </ul>
         </nav> */}
+      </div>
+    </header>
+  );
+}
+
+// Export Navbar with Suspense
+export function Navbar() {
+  return (
+    <React.Suspense fallback={<NavbarFallback />}>
+      <NavbarClient />
+    </React.Suspense>
+  );
+}
+
+// Simple fallback while loading
+function NavbarFallback() {
+  return (
+    <header className='sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60'>
+      <div className='container mx-auto px-4 sm:px-6 lg:px-8'>
+        <div className='flex h-16 items-center justify-between'>
+          <div className='flex items-center gap-2'>
+            <div className='flex items-center gap-2'>
+              <Globe className='h-6 w-6' />
+              <span className='font-bold'>LangAI</span>
+            </div>
+          </div>
+          <div className='animate-pulse h-10 w-64 bg-accent/10 rounded'></div>
+          <div className='flex items-center gap-2'>
+            <div className='h-9 w-9 rounded-md bg-accent/10'></div>
+            <div className='md:hidden h-9 w-9 rounded-md bg-accent/10'></div>
+          </div>
+        </div>
       </div>
     </header>
   );

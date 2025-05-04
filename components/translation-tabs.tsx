@@ -1,5 +1,6 @@
 'use client';
 
+import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -8,7 +9,8 @@ import ImageTranslation from '@/components/image-translation';
 import DocumentTranslation from '@/components/document-translation';
 import AudioTranslation from './audio-translation';
 
-export function TranslationTabs({
+// Client component that uses useSearchParams
+function TranslationTabsClient({
   sourceLanguage,
   targetLanguage,
   model,
@@ -92,5 +94,36 @@ export function TranslationTabs({
         />
       </TabsContent>
     </Tabs>
+  );
+}
+
+// Fallback component while loading
+function TranslationTabsFallback() {
+  return (
+    <div className='w-full space-y-4'>
+      <div className='grid w-full grid-cols-4 gap-2 bg-muted/30 p-1 rounded-lg'>
+        {[...Array(4)].map((_, idx) => (
+          <div
+            key={idx}
+            className='h-9 rounded bg-accent/10 animate-pulse'
+          ></div>
+        ))}
+      </div>
+      <div className='w-full h-64 rounded-lg bg-accent/5 animate-pulse'></div>
+    </div>
+  );
+}
+
+// Export the component wrapped in Suspense
+export function TranslationTabs(props: {
+  sourceLanguage: string;
+  targetLanguage: string;
+  model: string;
+  onSourceLanguageChange: (code: string) => void;
+}) {
+  return (
+    <React.Suspense fallback={<TranslationTabsFallback />}>
+      <TranslationTabsClient {...props} />
+    </React.Suspense>
   );
 }
