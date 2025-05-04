@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, Copy, Save, Wand2, ArrowRight } from 'lucide-react';
+import { Loader2, Copy, Save, Wand2, ArrowRight, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useHistory } from '@/context/history-context';
 import { getLanguageByCode } from '@/data/languages';
@@ -269,9 +269,52 @@ export default function TextTranslation({
     }
   };
 
+  const handleClearInput = () => {
+    setInputText('');
+    setDetectedLanguage(null);
+  };
+
+  const handleClearTranslation = () => {
+    setTranslatedText('');
+  };
+
   return (
     <div className='space-y-4 mt-4'>
-      <div className='relative'>
+      <div>
+        <div className='flex justify-between items-center mb-2'>
+          <div className='text-sm text-muted-foreground'>Source Text</div>
+          <div className='flex items-center space-x-2'>
+            {inputText.trim() && (
+              <>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  onClick={handleClearInput}
+                  title='Clear text'
+                  className='h-8 px-2'
+                >
+                  <X className='h-4 w-4 mr-1' />
+                  Clear
+                </Button>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  onClick={detectLanguage}
+                  disabled={isDetecting}
+                  title='Detect language'
+                  className='h-8 px-2'
+                >
+                  {isDetecting ? (
+                    <Loader2 className='h-4 w-4 mr-1 animate-spin' />
+                  ) : (
+                    <Wand2 className='h-4 w-4 mr-1' />
+                  )}
+                  Detect Language
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
         <Textarea
           placeholder='Enter text to translate (Ctrl+Enter to translate)'
           value={inputText}
@@ -286,23 +329,6 @@ export default function TextTranslation({
             }
           }}
         />
-        {inputText.trim() && (
-          <Button
-            variant='ghost'
-            size='icon'
-            className='absolute top-2 right-2'
-            onClick={detectLanguage}
-            disabled={isDetecting}
-            title='Detect language'
-          >
-            {isDetecting ? (
-              <Loader2 className='h-4 w-4 animate-spin' />
-            ) : (
-              <Wand2 className='h-4 w-4' />
-            )}
-            <span className='sr-only'>Detect language</span>
-          </Button>
-        )}
       </div>
 
       {detectedLanguage &&
@@ -344,32 +370,47 @@ export default function TextTranslation({
 
       {translatedText && (
         <div className='space-y-2'>
-          <div className='relative'>
+          <div>
+            <div className='flex justify-between items-center mb-2'>
+              <div className='text-sm text-muted-foreground'>Translation</div>
+              <div className='flex space-x-2'>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  onClick={handleClearTranslation}
+                  title='Clear translation'
+                  className='h-8 px-2'
+                >
+                  <X className='h-4 w-4 mr-1' />
+                  Clear
+                </Button>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  onClick={handleCopy}
+                  title='Copy to clipboard'
+                  className='h-8 px-2'
+                >
+                  <Copy className='h-4 w-4 mr-1' />
+                  Copy
+                </Button>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  onClick={handleSave}
+                  title='Save to history'
+                  className='h-8 px-2'
+                >
+                  <Save className='h-4 w-4 mr-1' />
+                  Save
+                </Button>
+              </div>
+            </div>
             <Textarea
               value={translatedText}
               readOnly
               className='min-h-[120px]'
             />
-            <div className='absolute top-2 right-2 flex space-x-1'>
-              <Button
-                variant='ghost'
-                size='icon'
-                onClick={handleCopy}
-                title='Copy to clipboard'
-              >
-                <Copy className='h-4 w-4' />
-                <span className='sr-only'>Copy to clipboard</span>
-              </Button>
-              <Button
-                variant='ghost'
-                size='icon'
-                onClick={handleSave}
-                title='Save to history'
-              >
-                <Save className='h-4 w-4' />
-                <span className='sr-only'>Save to history</span>
-              </Button>
-            </div>
           </div>
         </div>
       )}
