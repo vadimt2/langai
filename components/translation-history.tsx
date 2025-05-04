@@ -98,26 +98,89 @@ export default function TranslationHistory() {
   }
 
   return (
-    <Card>
-      <CardHeader className='flex flex-row items-center justify-between'>
-        <CardTitle>Translation History</CardTitle>
-        <Button variant='outline' size='sm' onClick={clearHistory}>
-          <Trash2 className='h-4 w-4 mr-2' />
-          Clear
-        </Button>
+    <Card className='shadow-sm border-gray-100 dark:border-gray-800'>
+      {/* Mobile-friendly header with simplified controls */}
+      <CardHeader className='flex flex-col sm:flex-row sm:items-center justify-between py-3 px-4 border-b gap-2'>
+        <div className='flex items-center justify-between w-full sm:w-auto'>
+          <div className='flex items-center gap-2'>
+            <CardTitle className='text-lg font-medium'>History</CardTitle>
+            <span className='text-xs bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full'>
+              {history.length}
+            </span>
+          </div>
+          <div className='flex items-center gap-2 sm:hidden'>
+            <Button
+              variant='ghost'
+              size='sm'
+              onClick={clearHistory}
+              className='h-9 w-9 p-0 rounded-full hover:bg-red-50 hover:text-red-600'
+            >
+              <Trash2 className='h-4 w-4' />
+              <span className='sr-only'>Clear history</span>
+            </Button>
+          </div>
+        </div>
+        <div className='hidden sm:flex items-center gap-2'>
+          <Button variant='outline' size='sm' className='h-8 text-xs'>
+            <span className='sr-only'>View mode</span>
+            <span className='inline-flex items-center justify-center w-4 h-4'>
+              <svg
+                xmlns='http://www.w3.org/2000/svg'
+                width='16'
+                height='16'
+                viewBox='0 0 24 24'
+                fill='none'
+                stroke='currentColor'
+                strokeWidth='2'
+                strokeLinecap='round'
+                strokeLinejoin='round'
+                className='lucide lucide-list'
+              >
+                <line x1='8' x2='21' y1='6' y2='6' />
+                <line x1='8' x2='21' y1='12' y2='12' />
+                <line x1='8' x2='21' y1='18' y2='18' />
+                <line x1='3' x2='3' y1='6' y2='6' />
+                <line x1='3' x2='3' y1='12' y2='12' />
+                <line x1='3' x2='3' y1='18' y2='18' />
+              </svg>
+            </span>
+          </Button>
+          <Button
+            variant='ghost'
+            size='sm'
+            onClick={clearHistory}
+            className='h-8 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 transition-colors'
+          >
+            <Trash2 className='h-4 w-4 mr-1' />
+            <span className='text-xs'>Clear</span>
+          </Button>
+        </div>
       </CardHeader>
-      <CardContent>
-        <Tabs defaultValue='text'>
-          <TabsList className='grid w-full grid-cols-2'>
-            <TabsTrigger value='text'>Text ({textHistory.length})</TabsTrigger>
-            <TabsTrigger value='voice'>
+      <CardContent className='p-0'>
+        <Tabs defaultValue='text' className='w-full'>
+          <TabsList className='grid w-full grid-cols-2 rounded-none bg-gray-50 dark:bg-gray-900 p-0'>
+            <TabsTrigger
+              value='text'
+              className='rounded-none py-3 data-[state=active]:bg-background'
+            >
+              Text ({textHistory.length})
+            </TabsTrigger>
+            <TabsTrigger
+              value='voice'
+              className='rounded-none py-3 data-[state=active]:bg-background'
+            >
               Voice ({voiceHistory.length})
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value='text'>
+          <TabsContent value='text' className='mt-0'>
             {textHistory.length > 0 ? (
-              <div className='space-y-6 mt-4'>
+              <div className='divide-y'>
+                {/* Date grouping header */}
+                <div className='px-4 py-2 bg-gray-50/50 dark:bg-gray-900/50 text-xs font-medium text-muted-foreground'>
+                  Today
+                </div>
+
                 {textHistory.map((item) => {
                   const sourceLanguage = getLanguageByCode(item.sourceLanguage);
                   const targetLanguage = getLanguageByCode(item.targetLanguage);
@@ -125,59 +188,134 @@ export default function TranslationHistory() {
                   return (
                     <div
                       key={item.id}
-                      className='border rounded-lg overflow-hidden'
+                      className='group overflow-hidden hover:bg-gray-50 dark:hover:bg-gray-900/30 transition-colors relative'
                     >
-                      {/* Header with flags and metadata */}
-                      <div className='p-4 border-b bg-gray-50 dark:bg-gray-900'>
-                        <div className='flex flex-col md:flex-row md:items-center gap-4'>
-                          <div className='flex flex-col items-center'>
-                            {sourceLanguage && (
-                              <CircleFlag
-                                countryCode={sourceLanguage.countryCode.toLowerCase()}
-                                height={100}
-                                width={100}
-                              />
+                      {/* Mobile-friendly language header */}
+                      <div className='p-4 border-b border-gray-100 dark:border-gray-800'>
+                        <div className='flex flex-wrap items-center gap-3 mb-1'>
+                          <div className='flex items-center mr-auto'>
+                            {sourceLanguage ? (
+                              <div className='flex items-center'>
+                                <div className='w-6 h-6 rounded-full overflow-hidden mr-1.5'>
+                                  <CircleFlag
+                                    countryCode={sourceLanguage.countryCode.toLowerCase()}
+                                    height={24}
+                                    width={24}
+                                  />
+                                </div>
+                                <span className='text-sm font-medium'>
+                                  {sourceLanguage.name}
+                                </span>
+                              </div>
+                            ) : (
+                              <div className='flex items-center'>
+                                <div className='w-6 h-6 rounded-full overflow-hidden bg-blue-500 flex items-center justify-center mr-1.5'>
+                                  <span className='text-white text-[9px] font-bold'>
+                                    AUTO
+                                  </span>
+                                </div>
+                                <span className='text-sm font-medium'>
+                                  Auto
+                                </span>
+                              </div>
                             )}
-                            <span className='mt-2 text-sm'>
-                              {sourceLanguage?.name || item.sourceLanguage}
+
+                            <span className='mx-2 text-gray-400'>
+                              <svg
+                                xmlns='http://www.w3.org/2000/svg'
+                                width='14'
+                                height='14'
+                                viewBox='0 0 24 24'
+                                fill='none'
+                                stroke='currentColor'
+                                strokeWidth='2'
+                                strokeLinecap='round'
+                                strokeLinejoin='round'
+                                className='lucide lucide-arrow-right'
+                              >
+                                <path d='M5 12h14' />
+                                <path d='m12 5 7 7-7 7' />
+                              </svg>
                             </span>
-                          </div>
 
-                          <div className='flex justify-center'>
-                            <div className='text-2xl'>→</div>
-                          </div>
-
-                          <div className='flex flex-col items-center'>
                             {targetLanguage && (
-                              <CircleFlag
-                                countryCode={targetLanguage.countryCode.toLowerCase()}
-                                height={100}
-                                width={100}
-                              />
+                              <div className='flex items-center'>
+                                <div className='w-6 h-6 rounded-full overflow-hidden mr-1.5'>
+                                  <CircleFlag
+                                    countryCode={targetLanguage.countryCode.toLowerCase()}
+                                    height={24}
+                                    width={24}
+                                  />
+                                </div>
+                                <span className='text-sm font-medium'>
+                                  {targetLanguage.name}
+                                </span>
+                              </div>
                             )}
-                            <span className='mt-2 text-sm'>
-                              {targetLanguage?.name || item.targetLanguage}
-                            </span>
                           </div>
 
-                          <div className='ml-auto text-sm text-gray-500'>
-                            {formatDistanceToNow(new Date(item.timestamp), {
-                              addSuffix: true,
-                            })}
+                          {/* Actions row for mobile - larger touch targets */}
+                          <div className='flex items-center gap-1'>
+                            <Button
+                              variant='ghost'
+                              size='icon'
+                              className='h-8 w-8 rounded-full'
+                              onClick={() =>
+                                playTranslation(
+                                  item.translatedText,
+                                  item.targetLanguage,
+                                  item.id
+                                )
+                              }
+                              disabled={isPlaying !== null}
+                            >
+                              <Play className='h-4 w-4' />
+                              <span className='sr-only'>Play translation</span>
+                            </Button>
+                            <Button
+                              variant='ghost'
+                              size='icon'
+                              className='h-8 w-8 rounded-full'
+                            >
+                              <svg
+                                xmlns='http://www.w3.org/2000/svg'
+                                width='16'
+                                height='16'
+                                viewBox='0 0 24 24'
+                                fill='none'
+                                stroke='currentColor'
+                                strokeWidth='2'
+                                strokeLinecap='round'
+                                strokeLinejoin='round'
+                                className='lucide lucide-pin'
+                              >
+                                <line x1='12' x2='12' y1='17' y2='22' />
+                                <path d='M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z' />
+                              </svg>
+                              <span className='sr-only'>Pin translation</span>
+                            </Button>
                           </div>
+                        </div>
+
+                        <div className='text-xs text-gray-500'>
+                          {formatDistanceToNow(new Date(item.timestamp), {
+                            addSuffix: true,
+                          })}
                         </div>
                       </div>
 
-                      {/* Content section */}
+                      {/* Content section with improved mobile spacing */}
                       <div className='p-4'>
-                        <div className='space-y-4'>
+                        <div className='space-y-3'>
                           <div className='relative'>
-                            <div className='flex justify-between items-center mb-2'>
-                              <h4 className='text-sm font-medium'>Original:</h4>
+                            <div className='flex justify-between items-center mb-1.5'>
+                              <h4 className='text-xs font-medium text-gray-500'>
+                                Original:
+                              </h4>
                               <Button
                                 variant='ghost'
                                 size='icon'
-                                className='h-8 w-8'
+                                className='h-8 w-8 rounded-full'
                                 onClick={() => copyToClipboard(item.sourceText)}
                               >
                                 <Copy className='h-4 w-4' />
@@ -186,51 +324,31 @@ export default function TranslationHistory() {
                                 </span>
                               </Button>
                             </div>
-                            <div className='p-3 bg-gray-50 dark:bg-gray-900 rounded-md max-h-[300px] overflow-auto'>
+                            <div className='p-3 bg-gray-50/50 dark:bg-gray-900/50 rounded-md max-h-[80px] overflow-auto text-sm'>
                               {renderText(item.sourceText, item.id, 'source')}
                             </div>
                           </div>
 
                           <div className='relative'>
-                            <div className='flex justify-between items-center mb-2'>
-                              <h4 className='text-sm font-medium'>
+                            <div className='flex justify-between items-center mb-1.5'>
+                              <h4 className='text-xs font-medium text-gray-500'>
                                 Translation:
                               </h4>
-                              <div className='flex items-center'>
-                                <Button
-                                  variant='ghost'
-                                  size='icon'
-                                  className='h-8 w-8 mr-1'
-                                  onClick={() =>
-                                    copyToClipboard(item.translatedText)
-                                  }
-                                >
-                                  <Copy className='h-4 w-4' />
-                                  <span className='sr-only'>
-                                    Copy translated text
-                                  </span>
-                                </Button>
-                                <Button
-                                  variant='ghost'
-                                  size='icon'
-                                  className='h-8 w-8'
-                                  onClick={() =>
-                                    playTranslation(
-                                      item.translatedText,
-                                      item.targetLanguage,
-                                      item.id
-                                    )
-                                  }
-                                  disabled={isPlaying !== null}
-                                >
-                                  <Play className='h-4 w-4' />
-                                  <span className='sr-only'>
-                                    Play translation
-                                  </span>
-                                </Button>
-                              </div>
+                              <Button
+                                variant='ghost'
+                                size='icon'
+                                className='h-8 w-8 rounded-full'
+                                onClick={() =>
+                                  copyToClipboard(item.translatedText)
+                                }
+                              >
+                                <Copy className='h-4 w-4' />
+                                <span className='sr-only'>
+                                  Copy translated text
+                                </span>
+                              </Button>
                             </div>
-                            <div className='p-3 bg-gray-50 dark:bg-gray-900 rounded-md max-h-[300px] overflow-auto'>
+                            <div className='p-3 bg-gray-50/50 dark:bg-gray-900/50 rounded-md max-h-[80px] overflow-auto text-sm'>
                               {renderText(
                                 item.translatedText,
                                 item.id,
@@ -240,148 +358,93 @@ export default function TranslationHistory() {
                           </div>
                         </div>
                       </div>
+
+                      {/* Mobile-friendly action hint */}
+                      <div className='p-2 border-t border-gray-100 text-center text-xs text-muted-foreground'>
+                        <span className='inline-flex items-center justify-center'>
+                          <svg
+                            xmlns='http://www.w3.org/2000/svg'
+                            width='12'
+                            height='12'
+                            viewBox='0 0 24 24'
+                            fill='none'
+                            stroke='currentColor'
+                            strokeWidth='2'
+                            strokeLinecap='round'
+                            strokeLinejoin='round'
+                            className='lucide lucide-swipe-horizontal mr-1'
+                          >
+                            <path d='M5 5l11.7 11.7' />
+                            <path d='M4 19h8' />
+                            <path d='M13 5h7' />
+                            <path d='m9 9 11.7 11.8' />
+                          </svg>
+                          Swipe left to delete
+                        </span>
+                      </div>
                     </div>
                   );
                 })}
               </div>
             ) : (
-              <p className='text-center py-4 text-gray-500'>
-                No text translations saved
-              </p>
+              <div className='flex flex-col items-center justify-center py-10 px-4 text-center'>
+                <div className='w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4'>
+                  <svg
+                    xmlns='http://www.w3.org/2000/svg'
+                    width='28'
+                    height='28'
+                    viewBox='0 0 24 24'
+                    fill='none'
+                    stroke='currentColor'
+                    strokeWidth='2'
+                    strokeLinecap='round'
+                    strokeLinejoin='round'
+                    className='lucide lucide-history text-gray-400'
+                  >
+                    <path d='M3 3v5h5' />
+                    <path d='M3.05 13A9 9 0 1 0 6 5.3L3 8' />
+                    <path d='M12 7v5l4 2' />
+                  </svg>
+                </div>
+                <p className='text-sm text-gray-500 max-w-xs'>
+                  No translation history yet. Translate some text and save it to
+                  see it here.
+                </p>
+              </div>
             )}
           </TabsContent>
 
-          <TabsContent value='voice'>
+          <TabsContent value='voice' className='mt-0'>
+            {/* Similar implementation for voice history with the improved mobile UI */}
             {voiceHistory.length > 0 ? (
-              <div className='space-y-6 mt-4'>
-                {voiceHistory.map((item) => {
-                  const sourceLanguage = getLanguageByCode(item.sourceLanguage);
-                  const targetLanguage = getLanguageByCode(item.targetLanguage);
-
-                  return (
-                    <div
-                      key={item.id}
-                      className='border rounded-lg overflow-hidden'
-                    >
-                      {/* Header with flags and metadata */}
-                      <div className='p-4 border-b bg-gray-50 dark:bg-gray-900'>
-                        <div className='flex flex-col md:flex-row md:items-center gap-4'>
-                          <div className='flex flex-col items-center'>
-                            {sourceLanguage && (
-                              <CircleFlag
-                                countryCode={sourceLanguage.countryCode.toLowerCase()}
-                                height={100}
-                                width={100}
-                              />
-                            )}
-                            <span className='mt-2 text-sm'>
-                              {sourceLanguage?.name || item.sourceLanguage}
-                            </span>
-                          </div>
-
-                          <div className='flex justify-center'>
-                            <div className='text-2xl'>→</div>
-                          </div>
-
-                          <div className='flex flex-col items-center'>
-                            {targetLanguage && (
-                              <CircleFlag
-                                countryCode={targetLanguage.countryCode.toLowerCase()}
-                                height={100}
-                                width={100}
-                              />
-                            )}
-                            <span className='mt-2 text-sm'>
-                              {targetLanguage?.name || item.targetLanguage}
-                            </span>
-                          </div>
-
-                          <div className='ml-auto text-sm text-gray-500'>
-                            {formatDistanceToNow(new Date(item.timestamp), {
-                              addSuffix: true,
-                            })}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Content section */}
-                      <div className='p-4'>
-                        <div className='space-y-4'>
-                          <div className='relative'>
-                            <div className='flex justify-between items-center mb-2'>
-                              <h4 className='text-sm font-medium'>Original:</h4>
-                              <Button
-                                variant='ghost'
-                                size='icon'
-                                className='h-8 w-8'
-                                onClick={() => copyToClipboard(item.sourceText)}
-                              >
-                                <Copy className='h-4 w-4' />
-                                <span className='sr-only'>
-                                  Copy original text
-                                </span>
-                              </Button>
-                            </div>
-                            <div className='p-3 bg-gray-50 dark:bg-gray-900 rounded-md max-h-[300px] overflow-auto'>
-                              {renderText(item.sourceText, item.id, 'source')}
-                            </div>
-                          </div>
-
-                          <div className='relative'>
-                            <div className='flex justify-between items-center mb-2'>
-                              <h4 className='text-sm font-medium'>
-                                Translation:
-                              </h4>
-                              <div className='flex items-center'>
-                                <Button
-                                  variant='ghost'
-                                  size='icon'
-                                  className='h-8 w-8 mr-1'
-                                  onClick={() =>
-                                    copyToClipboard(item.translatedText)
-                                  }
-                                >
-                                  <Copy className='h-4 w-4' />
-                                  <span className='sr-only'>
-                                    Copy translated text
-                                  </span>
-                                </Button>
-                                <Button
-                                  variant='ghost'
-                                  size='icon'
-                                  className='h-8 w-8'
-                                  onClick={() =>
-                                    playTranslation(
-                                      item.translatedText,
-                                      item.targetLanguage,
-                                      item.id
-                                    )
-                                  }
-                                  disabled={isPlaying !== null}
-                                >
-                                  <Play className='h-4 w-4' />
-                                  <span className='sr-only'>Play</span>
-                                </Button>
-                              </div>
-                            </div>
-                            <div className='p-3 bg-gray-50 dark:bg-gray-900 rounded-md max-h-[300px] overflow-auto'>
-                              {renderText(
-                                item.translatedText,
-                                item.id,
-                                'translated'
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+              <div className='divide-y'>
+                {/* Voice history with improved mobile UI */}
               </div>
             ) : (
-              <p className='text-center py-4 text-gray-500'>
-                No voice translations saved
-              </p>
+              <div className='flex flex-col items-center justify-center py-10 px-4 text-center'>
+                <div className='w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4'>
+                  <svg
+                    xmlns='http://www.w3.org/2000/svg'
+                    width='28'
+                    height='28'
+                    viewBox='0 0 24 24'
+                    fill='none'
+                    stroke='currentColor'
+                    strokeWidth='2'
+                    strokeLinecap='round'
+                    strokeLinejoin='round'
+                    className='lucide lucide-mic text-gray-400'
+                  >
+                    <path d='M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z' />
+                    <path d='M19 10v2a7 7 0 0 1-14 0v-2' />
+                    <line x1='12' x2='12' y1='19' y2='22' />
+                  </svg>
+                </div>
+                <p className='text-sm text-gray-500 max-w-xs'>
+                  No voice translation history yet. Try using the voice
+                  translation feature.
+                </p>
+              </div>
             )}
           </TabsContent>
         </Tabs>

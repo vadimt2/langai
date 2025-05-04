@@ -306,9 +306,9 @@ export default function TextTranslation({
   return (
     <div className='space-y-4 mt-4'>
       <div>
-        <div className='flex justify-between items-center mb-2'>
+        <div className='flex flex-col sm:flex-row sm:justify-between sm:items-center mb-2 gap-2'>
           <div className='text-sm text-muted-foreground'>Source Text</div>
-          <div className='flex items-center space-x-2'>
+          <div className='flex flex-wrap gap-1'>
             {inputText.trim() && (
               <>
                 <Button
@@ -316,7 +316,7 @@ export default function TextTranslation({
                   size='sm'
                   onClick={handleClearInput}
                   title='Clear text'
-                  className='h-8 px-2'
+                  className='h-8 px-2 flex-grow sm:flex-grow-0'
                 >
                   <X className='h-4 w-4 mr-1' />
                   Clear
@@ -327,7 +327,7 @@ export default function TextTranslation({
                   onClick={detectLanguage}
                   disabled={isDetecting}
                   title='Detect language'
-                  className='h-8 px-2'
+                  className='h-8 px-2 flex-grow sm:flex-grow-0'
                 >
                   {isDetecting ? (
                     <Loader2 className='h-4 w-4 mr-1 animate-spin' />
@@ -359,15 +359,15 @@ export default function TextTranslation({
       {detectedLanguage &&
         detectedLanguage !== sourceLanguage &&
         onSourceLanguageChange && (
-          <Alert className='flex items-center justify-between bg-muted'>
-            <AlertDescription className='flex-1'>
+          <Alert className='flex flex-col sm:flex-row sm:items-center sm:justify-between bg-muted p-3 gap-2'>
+            <AlertDescription className='flex-1 text-sm'>
               Detected language:{' '}
               {getLanguageByCode(detectedLanguage)?.name || detectedLanguage}
             </AlertDescription>
             <Button
               variant='outline'
               size='sm'
-              className='ml-2 flex items-center'
+              className='self-stretch sm:self-auto flex items-center justify-center'
               onClick={switchToDetectedLanguage}
             >
               Switch to this language
@@ -396,15 +396,15 @@ export default function TextTranslation({
       {translatedText && (
         <div className='space-y-2'>
           <div>
-            <div className='flex justify-between items-center mb-2'>
+            <div className='flex flex-col sm:flex-row sm:justify-between sm:items-center mb-2 gap-2'>
               <div className='text-sm text-muted-foreground'>Translation</div>
-              <div className='flex space-x-2'>
+              <div className='flex flex-wrap gap-1'>
                 <Button
                   variant='ghost'
                   size='sm'
                   onClick={handleClearTranslation}
                   title='Clear translation'
-                  className='h-8 px-2'
+                  className='h-8 px-2 flex-grow sm:flex-grow-0'
                 >
                   <X className='h-4 w-4 mr-1' />
                   Clear
@@ -414,7 +414,7 @@ export default function TextTranslation({
                   size='sm'
                   onClick={handleCopy}
                   title='Copy to clipboard'
-                  className='h-8 px-2'
+                  className='h-8 px-2 flex-grow sm:flex-grow-0'
                 >
                   <Copy className='h-4 w-4 mr-1' />
                   Copy
@@ -425,7 +425,7 @@ export default function TextTranslation({
                   onClick={handlePlay}
                   disabled={isPlaying}
                   title='Listen to translation'
-                  className='h-8 px-2'
+                  className='h-8 px-2 flex-grow sm:flex-grow-0'
                 >
                   <Play className='h-4 w-4 mr-1' />
                   {isPlaying ? 'Playing...' : 'Play'}
@@ -435,7 +435,7 @@ export default function TextTranslation({
                   size='sm'
                   onClick={handleSave}
                   title='Save to history'
-                  className='h-8 px-2'
+                  className='h-8 px-2 flex-grow sm:flex-grow-0'
                 >
                   <Save className='h-4 w-4 mr-1' />
                   Save

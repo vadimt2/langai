@@ -130,9 +130,9 @@ export default function TranslationAppShell() {
         />
       </CardContent>
 
-      <CardFooter className='flex justify-between'>
-        <p className='text-sm text-gray-500'>Powered by AI</p>
-        <p className='text-xs text-muted-foreground'>
+      <CardFooter className='flex flex-col sm:flex-row sm:justify-between items-center gap-2 p-3 text-center sm:text-left'>
+        <p className='text-sm font-medium text-gray-500'>Powered by AI</p>
+        <p className='text-xs text-muted-foreground max-w-xs'>
           {preferencesAllowed
             ? 'Your language preferences are saved automatically'
             : 'Language preferences not saved (consent required)'}
