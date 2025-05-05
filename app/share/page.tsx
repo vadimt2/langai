@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,17 @@ interface ParsedTranslation {
   translatedText: string;
 }
 
-export default function SharePage() {
+// Loading component for Suspense fallback
+function LoadingContent() {
+  return (
+    <div className='py-8 text-center'>
+      <p className='text-gray-500'>Loading shared translation...</p>
+    </div>
+  );
+}
+
+// Extract the main content into a separate client component that uses useSearchParams
+function ShareContent() {
   const searchParams = useSearchParams();
   const [parsedTranslation, setParsedTranslation] =
     useState<ParsedTranslation | null>(null);
@@ -74,6 +84,83 @@ export default function SharePage() {
     });
   };
 
+  if (isLoading) {
+    return <LoadingContent />;
+  }
+
+  return parsedTranslation ? (
+    <div className='space-y-6'>
+      <div>
+        <div className='flex justify-between items-center mb-2'>
+          <h3 className='text-sm font-medium'>
+            Original ({parsedTranslation.sourceLanguage})
+          </h3>
+          <Button
+            variant='ghost'
+            size='sm'
+            onClick={() => handleCopy(parsedTranslation.sourceText)}
+            className='h-8'
+          >
+            <Copy className='h-4 w-4 mr-1' />
+            Copy
+          </Button>
+        </div>
+        <Textarea
+          value={parsedTranslation.sourceText}
+          readOnly
+          className='min-h-[120px]'
+        />
+      </div>
+
+      <div>
+        <div className='flex justify-between items-center mb-2'>
+          <h3 className='text-sm font-medium'>
+            Translation ({parsedTranslation.targetLanguage})
+          </h3>
+          <Button
+            variant='ghost'
+            size='sm'
+            onClick={() => handleCopy(parsedTranslation.translatedText)}
+            className='h-8'
+          >
+            <Copy className='h-4 w-4 mr-1' />
+            Copy
+          </Button>
+        </div>
+        <Textarea
+          value={parsedTranslation.translatedText}
+          readOnly
+          className='min-h-[120px]'
+        />
+      </div>
+
+      <div className='mt-6'>
+        <Link href='/'>
+          <Button variant='outline' className='w-full'>
+            Create your own translation
+          </Button>
+        </Link>
+      </div>
+    </div>
+  ) : (
+    <div className='py-8 text-center'>
+      <p className='text-gray-500'>
+        No translation was provided in the shared link or the format could not
+        be recognized.
+      </p>
+      <div className='mt-6'>
+        <Link href='/'>
+          <Button variant='outline' className='w-full'>
+            Create a translation
+          </Button>
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+// Main component that uses Suspense
+export default function SharePage() {
   return (
     <div className='container mx-auto p-4 max-w-3xl'>
       <Card>
@@ -93,79 +180,9 @@ export default function SharePage() {
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
-            <div className='py-8 text-center'>
-              <p className='text-gray-500'>Loading shared translation...</p>
-            </div>
-          ) : parsedTranslation ? (
-            <div className='space-y-6'>
-              <div>
-                <div className='flex justify-between items-center mb-2'>
-                  <h3 className='text-sm font-medium'>
-                    Original ({parsedTranslation.sourceLanguage})
-                  </h3>
-                  <Button
-                    variant='ghost'
-                    size='sm'
-                    onClick={() => handleCopy(parsedTranslation.sourceText)}
-                    className='h-8'
-                  >
-                    <Copy className='h-4 w-4 mr-1' />
-                    Copy
-                  </Button>
-                </div>
-                <Textarea
-                  value={parsedTranslation.sourceText}
-                  readOnly
-                  className='min-h-[120px]'
-                />
-              </div>
-
-              <div>
-                <div className='flex justify-between items-center mb-2'>
-                  <h3 className='text-sm font-medium'>
-                    Translation ({parsedTranslation.targetLanguage})
-                  </h3>
-                  <Button
-                    variant='ghost'
-                    size='sm'
-                    onClick={() => handleCopy(parsedTranslation.translatedText)}
-                    className='h-8'
-                  >
-                    <Copy className='h-4 w-4 mr-1' />
-                    Copy
-                  </Button>
-                </div>
-                <Textarea
-                  value={parsedTranslation.translatedText}
-                  readOnly
-                  className='min-h-[120px]'
-                />
-              </div>
-
-              <div className='mt-6'>
-                <Link href='/'>
-                  <Button variant='outline' className='w-full'>
-                    Create your own translation
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          ) : (
-            <div className='py-8 text-center'>
-              <p className='text-gray-500'>
-                No translation was provided in the shared link or the format
-                could not be recognized.
-              </p>
-              <div className='mt-6'>
-                <Link href='/'>
-                  <Button variant='outline' className='w-full'>
-                    Create a translation
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          )}
+          <Suspense fallback={<LoadingContent />}>
+            <ShareContent />
+          </Suspense>
         </CardContent>
       </Card>
     </div>
