@@ -4,12 +4,20 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { Play, Trash2, ChevronDown, ChevronUp, Copy } from 'lucide-react';
-import { useHistory } from '@/context/history-context';
+import {
+  Play,
+  Trash2,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  Share2,
+} from 'lucide-react';
+import { useHistory, TranslationItem } from '@/context/history-context';
 import { formatDistanceToNow } from 'date-fns';
 import { CircleFlag } from 'react-circle-flags';
 import { getLanguageByCode } from '@/data/languages';
 import { useToast } from '@/hooks/use-toast';
+import { ShareDialog } from '@/components/share-dialog';
 
 // Character limit for text preview
 const TEXT_PREVIEW_LIMIT = 150;
@@ -57,6 +65,16 @@ export default function TranslationHistory() {
       title: 'Copied to clipboard',
       description: 'Text has been copied to your clipboard',
     });
+  };
+
+  // Format text for sharing
+  const getShareText = (item: TranslationItem) => {
+    const sourceLangName =
+      getLanguageByCode(item.sourceLanguage)?.name || item.sourceLanguage;
+    const targetLangName =
+      getLanguageByCode(item.targetLanguage)?.name || item.targetLanguage;
+
+    return `Original (${sourceLangName}):\n${item.sourceText}\n\nTranslation (${targetLangName}):\n${item.translatedText}`;
   };
 
   // Function to render text with proper truncation
@@ -272,6 +290,14 @@ export default function TranslationHistory() {
                               <Play className='h-4 w-4' />
                               <span className='sr-only'>Play translation</span>
                             </Button>
+
+                            <div className='h-8 w-8'>
+                              <ShareDialog
+                                textToShare={getShareText(item)}
+                                title='Share Translation History'
+                              />
+                            </div>
+
                             <Button
                               variant='ghost'
                               size='icon'

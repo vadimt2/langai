@@ -3,12 +3,22 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, Copy, Save, Wand2, ArrowRight, X, Play } from 'lucide-react';
+import {
+  Loader2,
+  Copy,
+  Save,
+  Wand2,
+  ArrowRight,
+  X,
+  Play,
+  Share2,
+} from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useHistory } from '@/context/history-context';
 import { getLanguageByCode } from '@/data/languages';
 import { useRecaptchaContext } from '@/context/recaptcha-context';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { ShareDialog } from '@/components/share-dialog';
 
 interface TextTranslationProps {
   sourceLanguage: string;
@@ -303,6 +313,16 @@ export default function TextTranslation({
     setTranslatedText('');
   };
 
+  // Format text for sharing
+  const getShareText = () => {
+    const sourceLangName =
+      getLanguageByCode(sourceLanguage)?.name || sourceLanguage;
+    const targetLangName =
+      getLanguageByCode(targetLanguage)?.name || targetLanguage;
+
+    return `Original (${sourceLangName}):\n${inputText}\n\nTranslation (${targetLangName}):\n${translatedText}`;
+  };
+
   return (
     <div className='space-y-4 mt-4'>
       <div>
@@ -430,6 +450,9 @@ export default function TextTranslation({
                   <Play className='h-4 w-4 mr-1' />
                   {isPlaying ? 'Playing...' : 'Play'}
                 </Button>
+
+                <ShareDialog textToShare={getShareText()} />
+
                 <Button
                   variant='ghost'
                   size='sm'
