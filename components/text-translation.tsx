@@ -12,6 +12,7 @@ import {
   X,
   Play,
   Share2,
+  Mic,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useHistory } from '@/context/history-context';
@@ -25,6 +26,38 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+
+// Type declarations for the Web Speech API
+interface SpeechRecognition extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start(): void;
+  stop(): void;
+  onresult: (event: SpeechRecognitionEvent) => void;
+  onerror: (event: SpeechRecognitionErrorEvent) => void;
+  onend: () => void;
+}
+
+interface SpeechRecognitionEvent {
+  results: {
+    [index: number]: {
+      [index: number]: {
+        transcript: string;
+        confidence: number;
+      };
+    };
+  };
+}
+
+interface SpeechRecognitionErrorEvent {
+  error: string;
+}
+
+interface Window {
+  SpeechRecognition?: new () => SpeechRecognition;
+  webkitSpeechRecognition?: new () => SpeechRecognition;
+}
 
 interface TextTranslationProps {
   sourceLanguage: string;
@@ -45,6 +78,7 @@ export default function TextTranslation({
   const [isDetecting, setIsDetecting] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [detectedLanguage, setDetectedLanguage] = useState<string | null>(null);
+  const [isListening, setIsListening] = useState(false);
   const { toast } = useToast();
   const { addToHistory } = useHistory();
   const {
@@ -329,6 +363,51 @@ export default function TextTranslation({
     return `Original (${sourceLangName}):\n${inputText}\n\nTranslation (${targetLangName}):\n${translatedText}`;
   };
 
+  const handleSpeechInput = () => {
+    if (
+      !('webkitSpeechRecognition' in window) &&
+      !('SpeechRecognition' in window)
+    ) {
+      toast({
+        title: 'Speech Recognition Not Supported',
+        description: 'Your browser does not support speech recognition.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsListening(true);
+
+    const SpeechRecognitionAPI =
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition;
+    const recognition = new SpeechRecognitionAPI() as SpeechRecognition;
+    recognition.lang = sourceLanguage;
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      const transcript = event.results[0][0].transcript;
+      setInputText((prev) => prev + (prev ? ' ' : '') + transcript);
+    };
+
+    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+      console.error('Speech recognition error', event.error);
+      setIsListening(false);
+      toast({
+        title: 'Speech Recognition Error',
+        description: `Error: ${event.error}`,
+        variant: 'destructive',
+      });
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognition.start();
+  };
+
   return (
     <div className='space-y-4 mt-4'>
       <div>
@@ -410,11 +489,24 @@ export default function TextTranslation({
           </Alert>
         )}
 
-      <div className='flex justify-center'>
+      <div className='flex justify-center gap-2'>
+        <Button
+          onClick={handleSpeechInput}
+          disabled={isListening}
+          variant='outline'
+          className='w-10 flex-shrink-0'
+          title='Speech input'
+        >
+          {isListening ? (
+            <Loader2 className='h-4 w-4 animate-spin' />
+          ) : (
+            <Mic className='h-4 w-4' />
+          )}
+        </Button>
         <Button
           onClick={handleTranslate}
           disabled={!inputText.trim() || isTranslating}
-          className='w-full sm:w-auto'
+          className='w-full sm:w-48 md:w-56'
         >
           {isTranslating ? (
             <>
