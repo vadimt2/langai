@@ -19,6 +19,12 @@ import { getLanguageByCode } from '@/data/languages';
 import { useRecaptchaContext } from '@/context/recaptcha-context';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ShareDialog } from '@/components/share-dialog';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 interface TextTranslationProps {
   sourceLanguage: string;
@@ -331,16 +337,24 @@ export default function TextTranslation({
           <div className='flex flex-wrap gap-1'>
             {inputText.trim() && (
               <>
-                <Button
-                  variant='ghost'
-                  size='sm'
-                  onClick={handleClearInput}
-                  title='Clear text'
-                  className='h-8 px-2 flex-grow sm:flex-grow-0'
-                >
-                  <X className='h-4 w-4 mr-1' />
-                  Clear
-                </Button>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant='ghost'
+                        size='sm'
+                        onClick={handleClearInput}
+                        className='h-8 px-2 flex-grow sm:flex-grow-0'
+                      >
+                        <X className='h-4 w-4 mr-0 sm:mr-1' />
+                        <span className='hidden sm:inline'>Clear</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Clear text</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
                 <Button
                   variant='ghost'
                   size='sm'
@@ -350,11 +364,11 @@ export default function TextTranslation({
                   className='h-8 px-2 flex-grow sm:flex-grow-0'
                 >
                   {isDetecting ? (
-                    <Loader2 className='h-4 w-4 mr-1 animate-spin' />
+                    <Loader2 className='h-4 w-4 mr-0 sm:mr-1 animate-spin' />
                   ) : (
-                    <Wand2 className='h-4 w-4 mr-1' />
+                    <Wand2 className='h-4 w-4 mr-0 sm:mr-1' />
                   )}
-                  Detect Language
+                  <span className='hidden sm:inline'>Detect Language</span>
                 </Button>
               </>
             )}
@@ -419,16 +433,24 @@ export default function TextTranslation({
             <div className='flex flex-col sm:flex-row sm:justify-between sm:items-center mb-2 gap-2'>
               <div className='text-sm text-muted-foreground'>Translation</div>
               <div className='flex flex-wrap gap-1'>
-                <Button
-                  variant='ghost'
-                  size='sm'
-                  onClick={handleClearTranslation}
-                  title='Clear translation'
-                  className='h-8 px-2 flex-grow sm:flex-grow-0'
-                >
-                  <X className='h-4 w-4 mr-1' />
-                  Clear
-                </Button>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant='ghost'
+                        size='sm'
+                        onClick={handleClearTranslation}
+                        className='h-8 px-2 flex-grow sm:flex-grow-0'
+                      >
+                        <X className='h-4 w-4 mr-0 sm:mr-1' />
+                        <span className='hidden sm:inline'>Clear</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Clear translation</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
                 <Button
                   variant='ghost'
                   size='sm'
@@ -436,8 +458,8 @@ export default function TextTranslation({
                   title='Copy to clipboard'
                   className='h-8 px-2 flex-grow sm:flex-grow-0'
                 >
-                  <Copy className='h-4 w-4 mr-1' />
-                  Copy
+                  <Copy className='h-4 w-4 mr-0 sm:mr-1' />
+                  <span className='hidden sm:inline'>Copy</span>
                 </Button>
                 <Button
                   variant='ghost'
@@ -447,8 +469,10 @@ export default function TextTranslation({
                   title='Listen to translation'
                   className='h-8 px-2 flex-grow sm:flex-grow-0'
                 >
-                  <Play className='h-4 w-4 mr-1' />
-                  {isPlaying ? 'Playing...' : 'Play'}
+                  <Play className='h-4 w-4 mr-0 sm:mr-1' />
+                  <span className='hidden sm:inline'>
+                    {isPlaying ? 'Playing...' : 'Play'}
+                  </span>
                 </Button>
 
                 <ShareDialog textToShare={getShareText()} />
@@ -460,8 +484,8 @@ export default function TextTranslation({
                   title='Save to history'
                   className='h-8 px-2 flex-grow sm:flex-grow-0'
                 >
-                  <Save className='h-4 w-4 mr-1' />
-                  Save
+                  <Save className='h-4 w-4 mr-0 sm:mr-1' />
+                  <span className='hidden sm:inline'>Save</span>
                 </Button>
               </div>
             </div>
