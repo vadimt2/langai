@@ -9,6 +9,7 @@ import { useHistory } from '@/context/history-context';
 import { useMobile } from '@/hooks/use-mobile';
 import { useRecaptchaContext } from '@/context/recaptcha-context';
 import { Progress } from '@/components/ui/progress';
+import { getLanguageByCode } from '@/data/languages';
 
 interface VoiceTranslationProps {
   sourceLanguage: string;
@@ -38,6 +39,7 @@ export default function VoiceTranslation({
   const [isTranslating, setIsTranslating] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
+  const [translationNote, setTranslationNote] = useState<string | null>(null);
   const { toast } = useToast();
   const { addToHistory } = useHistory();
   const recognitionRef = useRef<any>(null);
@@ -73,11 +75,47 @@ export default function VoiceTranslation({
 
       recognitionRef.current.onerror = (event: any) => {
         console.error('Speech recognition error', event.error);
-        toast({
-          title: 'Recognition Error',
-          description: `Error: ${event.error}. Please try again.`,
-          variant: 'destructive',
-        });
+
+        // Show appropriate error messages
+        if (event.error === 'no-speech') {
+          toast({
+            title: 'No Speech Detected',
+            description: 'No speech was detected. Please try again.',
+            variant: 'destructive',
+          });
+        } else if (
+          event.error === 'not-allowed' ||
+          event.error === 'permission-denied'
+        ) {
+          toast({
+            title: 'Microphone Access Denied',
+            description:
+              'Please allow microphone access to use voice translation.',
+            variant: 'destructive',
+          });
+        } else if (event.error === 'audio-capture') {
+          toast({
+            title: 'Microphone Error',
+            description:
+              'No microphone was found or it is not working properly.',
+            variant: 'destructive',
+          });
+        } else if (event.error === 'language-not-supported') {
+          toast({
+            title: 'Language Not Supported',
+            description: `The selected language (${
+              getLanguageByCode(sourceLanguage)?.name || sourceLanguage
+            }) is not supported by your browser's speech recognition.`,
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: 'Recognition Error',
+            description: `Error: ${event.error}. Please try again.`,
+            variant: 'destructive',
+          });
+        }
+
         setIsRecording(false);
         stopTimer();
       };
@@ -143,7 +181,28 @@ export default function VoiceTranslation({
 
   const startRecording = () => {
     setRecordedText('');
+
+    // Mobile-specific warning for non-English languages
+    if (sourceLanguage !== 'en' && isMobile) {
+      toast({
+        title: 'Mobile Speech Recognition Limitation',
+        description:
+          'Speech recognition on mobile devices works best with English. Other languages may have limited or no support depending on your device and browser.',
+        variant: 'default',
+        duration: 5000,
+      });
+    } else if (sourceLanguage !== 'en') {
+      toast({
+        title: 'Speech Recognition Limitation',
+        description:
+          'Note: Speech recognition works best with English. Your selected language may have limited support depending on your browser and device.',
+        variant: 'default',
+        duration: 5000,
+      });
+    }
+
     if (recognitionRef.current) {
+      recognitionRef.current.lang = sourceLanguage;
       recognitionRef.current.start();
     }
     setIsRecording(true);
@@ -159,17 +218,13 @@ export default function VoiceTranslation({
   };
 
   const handleTranslate = async () => {
-    if (!recordedText.trim()) return;
+    if (!recordedText.trim() || isTranslating) return;
 
     setIsTranslating(true);
-    setTranslatedText(''); // Clear previous translation
+    setTranslationNote(null); // Clear previous notes
 
     try {
-      // Get reCAPTCHA token
-      let recaptchaToken = null;
-      if (recaptchaLoaded) {
-        recaptchaToken = await getToken('translate');
-      }
+      const recaptchaToken = recaptchaLoaded ? await getToken('translate') : '';
 
       const response = await fetch('/api/translate', {
         method: 'POST',
@@ -214,6 +269,11 @@ export default function VoiceTranslation({
       }
 
       setTranslatedText(data.translatedText);
+
+      // Set translation note if available
+      if (data.translationNote) {
+        setTranslationNote(data.translationNote);
+      }
     } catch (error) {
       console.error('Translation error:', error);
       toast({
@@ -358,6 +418,13 @@ export default function VoiceTranslation({
         <div className='space-y-2'>
           <Textarea value={translatedText} readOnly className='min-h-[80px]' />
 
+          {/* Display Translation Note if available */}
+          {translationNote && (
+            <div className='mt-4 p-4 bg-muted rounded-md border border-muted-foreground/20'>
+              <div dangerouslySetInnerHTML={{ __html: translationNote }} />
+            </div>
+          )}
+
           <div className='flex justify-center space-x-2'>
             <Button
               onClick={playTranslation}
@@ -376,7 +443,6 @@ export default function VoiceTranslation({
                 </>
               )}
             </Button>
-
             <Button onClick={handleSave} variant='outline'>
               <Save className='mr-2 h-4 w-4' />
               Save

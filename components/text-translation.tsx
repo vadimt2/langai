@@ -79,6 +79,7 @@ export default function TextTranslation({
   const [isPlaying, setIsPlaying] = useState(false);
   const [detectedLanguage, setDetectedLanguage] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
+  const [translationNote, setTranslationNote] = useState<string | null>(null);
   const { toast } = useToast();
   const { addToHistory } = useHistory();
   const {
@@ -92,6 +93,7 @@ export default function TextTranslation({
 
     setIsTranslating(true);
     setTranslatedText(''); // Clear previous translation
+    setTranslationNote(null); // Clear previous translation note
 
     try {
       // Get reCAPTCHA token
@@ -181,6 +183,11 @@ export default function TextTranslation({
       }
 
       setTranslatedText(data.translatedText);
+
+      // Set translation note if available
+      if (data.translationNote) {
+        setTranslationNote(data.translationNote);
+      }
     } catch (error) {
       console.error('Translation error:', error);
       toast({
@@ -351,6 +358,7 @@ export default function TextTranslation({
 
   const handleClearTranslation = () => {
     setTranslatedText('');
+    setTranslationNote(null);
   };
 
   // Format text for sharing
@@ -587,6 +595,13 @@ export default function TextTranslation({
               className='min-h-[120px]'
             />
           </div>
+
+          {/* Display Translation Note if available */}
+          {translationNote && (
+            <div className='mt-4 p-4 bg-muted rounded-md border border-muted-foreground/20'>
+              <div dangerouslySetInnerHTML={{ __html: translationNote }} />
+            </div>
+          )}
         </div>
       )}
     </div>
