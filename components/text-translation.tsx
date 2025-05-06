@@ -105,8 +105,10 @@ export default function TextTranslation({
         recognition.interimResults = true;
 
         recognition.onresult = (event: SpeechRecognitionEvent) => {
+          const resultIndex = event.resultIndex;
           let transcript = '';
-          for (let i = 0; i < event.results.length; i++) {
+
+          for (let i = resultIndex; i < event.results.length; i++) {
             if (event.results[i].isFinal) {
               transcript += event.results[i][0].transcript + ' ';
             }
@@ -114,10 +116,13 @@ export default function TextTranslation({
 
           const finalText = transcript.trim();
           if (finalText) {
-            setInputText((prevText) =>
-              prevText ? `${prevText} ${finalText}` : finalText
-            );
-            // Detect language for longer inputs
+            setInputText((prevText) => {
+              if (!prevText || prevText.length === 0) {
+                return finalText;
+              }
+              return prevText + ' ' + finalText;
+            });
+
             if (finalText.length > 10) {
               detectLanguage(finalText);
             }
@@ -195,6 +200,12 @@ export default function TextTranslation({
     }
 
     try {
+      // Clear the input text when starting a new recording session
+      if (!isListening) {
+        setInputText('');
+        setDetectedLanguage(null);
+      }
+
       // Set the language for speech recognition
       const exactLanguageCode = getLanguageCode(sourceLanguage);
       recognitionRef.current.lang = exactLanguageCode;
