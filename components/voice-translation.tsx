@@ -53,6 +53,7 @@ export default function VoiceTranslation({
     isDisabled,
   } = useRecaptchaContext();
   const [isAndroid, setIsAndroid] = useState(false);
+  const [detectedWrongLanguage, setDetectedWrongLanguage] = useState(false);
 
   // Detect Android specifically
   useEffect(() => {
@@ -80,7 +81,24 @@ export default function VoiceTranslation({
             transcript += event.results[i][0].transcript + ' ';
           }
         }
-        setRecordedText(transcript.trim());
+
+        const finalText = transcript.trim();
+        setRecordedText(finalText);
+
+        // Check if the detected text appears to be in the wrong language
+        if (isAndroid && checkLanguageMismatch(finalText)) {
+          setDetectedWrongLanguage(true);
+          // Don't stop recording, but show a warning
+          toast({
+            title: 'Language Detection Issue',
+            description: `Android detected English instead of ${
+              getLanguageByCode(sourceLanguage)?.name
+            }. You may need to use manual input.`,
+            duration: 5000,
+          });
+        } else {
+          setDetectedWrongLanguage(false);
+        }
       };
 
       recognitionRef.current.onerror = (event: any) => {
@@ -205,13 +223,15 @@ export default function VoiceTranslation({
     setRecordedText('');
     setShowManualInput(false);
     setRecognitionFailed(false);
+    setDetectedWrongLanguage(false);
 
     // Android-specific warning for non-English languages
     if (sourceLanguage !== 'en' && isAndroid) {
       toast({
-        title: 'Android Speech Recognition Limitation',
-        description:
-          'Android browsers have very limited support for non-English speech recognition. Try using English or manually typing your text instead.',
+        title: 'Android Recognition Limitation',
+        description: `Warning: Android may detect English even when speaking ${
+          getLanguageByCode(sourceLanguage)?.name
+        }. Manual input may be needed.`,
         variant: 'destructive',
         duration: 8000,
       });
@@ -379,6 +399,70 @@ export default function VoiceTranslation({
   // Calculate progress percentage
   const progressPercentage = (recordingTime / MAX_RECORDING_TIME) * 100;
 
+  // Add language mismatch detection function
+  const checkLanguageMismatch = (text: string) => {
+    // Skip for English source language or short texts
+    if (sourceLanguage === 'en' || text.length < 4) return false;
+
+    // Russian: Check for Cyrillic characters
+    if (sourceLanguage === 'ru') {
+      const cyrillicPattern = /[\u0400-\u04FF]/g;
+      const cyrillicChars = text.match(cyrillicPattern) || [];
+      const cyrillicRatio = cyrillicChars.length / text.length;
+
+      if (cyrillicRatio < 0.5) {
+        return true;
+      }
+    }
+
+    // Chinese: Check for Chinese characters
+    if (sourceLanguage === 'zh') {
+      const chinesePattern = /[\u4E00-\u9FFF]/g;
+      const chineseChars = text.match(chinesePattern) || [];
+      const chineseRatio = chineseChars.length / text.length;
+
+      if (chineseRatio < 0.5) {
+        return true;
+      }
+    }
+
+    // Japanese: Check for Japanese characters
+    if (sourceLanguage === 'ja') {
+      const japanesePattern = /[\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF]/g;
+      const japaneseChars = text.match(japanesePattern) || [];
+      const japaneseRatio = japaneseChars.length / text.length;
+
+      if (japaneseRatio < 0.5) {
+        return true;
+      }
+    }
+
+    // Arabic: Check for Arabic characters
+    if (sourceLanguage === 'ar') {
+      const arabicPattern = /[\u0600-\u06FF]/g;
+      const arabicChars = text.match(arabicPattern) || [];
+      const arabicRatio = arabicChars.length / text.length;
+
+      if (arabicRatio < 0.5) {
+        return true;
+      }
+    }
+
+    // Greek: Check for Greek characters
+    if (sourceLanguage === 'el') {
+      const greekPattern = /[\u0370-\u03FF]/g;
+      const greekChars = text.match(greekPattern) || [];
+      const greekRatio = greekChars.length / text.length;
+
+      if (greekRatio < 0.5) {
+        return true;
+      }
+    }
+
+    // No mismatch detected with the checks above
+    return false;
+  };
+
   return (
     <div className='space-y-4 mt-4'>
       <div className='flex flex-col items-center space-y-4'>
@@ -404,6 +488,21 @@ export default function VoiceTranslation({
             : 'Press the microphone button to start recording'}
         </p>
 
+        {/* Add current language badge while recording */}
+        {isRecording && (
+          <div className='px-2 py-1 bg-primary/10 rounded-full text-xs text-primary-foreground/90 inline-flex items-center space-x-1'>
+            <span>
+              Listening in:{' '}
+              {getLanguageByCode(sourceLanguage)?.name || sourceLanguage}
+            </span>
+            {sourceLanguage !== 'en' && isAndroid && (
+              <span className='text-amber-500 ml-1'>
+                (may default to English)
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Show manual input suggestion and button for Android users */}
         {isAndroid &&
           sourceLanguage !== 'en' &&
@@ -425,6 +524,38 @@ export default function VoiceTranslation({
               </Button>
             </div>
           )}
+
+        {/* Show wrong language warning if detected */}
+        {detectedWrongLanguage && !showManualInput && (
+          <div className='w-full max-w-md p-3 bg-amber-50 border border-amber-200 rounded-md'>
+            <p className='text-sm text-amber-700 text-center'>
+              <strong>Language Mismatch Detected:</strong> Android appears to be
+              recognizing English instead of{' '}
+              {getLanguageByCode(sourceLanguage)?.name}.
+            </p>
+            <div className='flex justify-center mt-2 space-x-2'>
+              <Button
+                variant='outline'
+                size='sm'
+                onClick={() => setShowManualInput(true)}
+                className='text-xs'
+              >
+                Switch to Manual Input
+              </Button>
+              <Button
+                variant='ghost'
+                size='sm'
+                onClick={() => {
+                  setDetectedWrongLanguage(false);
+                  setRecordedText('');
+                }}
+                className='text-xs'
+              >
+                Try Again
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Manual input option UI */}
         {showManualInput && (
