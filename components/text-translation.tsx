@@ -87,6 +87,7 @@ interface TextTranslationProps {
 const RECORDING_RESTART_DELAY = 1000; // Reduce from 1500ms to 1000ms
 const RECORDING_COOLDOWN = 300; // Reduce from 1500ms to 300ms (just enough to prevent double-clicks)
 const RECORDING_CLEANUP_TIMEOUT = 500; // Reduce from 800ms to 500ms
+const SILENCE_TIMEOUT = 1500; // New constant for silence detection (1.5 seconds)
 
 export default function TextTranslation({
   sourceLanguage,
@@ -126,6 +127,9 @@ export default function TextTranslation({
   // Add a reference for button cooldown
   const buttonCooldownRef = useRef<boolean>(false);
 
+  // Add a new ref for silence detection timer
+  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   // Detect Android device
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -153,6 +157,12 @@ export default function TextTranslation({
           // Ignore errors on cleanup
         }
         recognitionRef.current = null;
+      }
+
+      // Clean up silence timer if exists
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
       }
     };
   }, []);
@@ -183,6 +193,24 @@ export default function TextTranslation({
     }
   };
 
+  // Helper function to reset silence timer
+  const resetSilenceTimer = () => {
+    // Clear existing timer if any
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+
+    // Only set a new timer if we're actively listening
+    if (isListening && isActivelyListening) {
+      silenceTimerRef.current = setTimeout(() => {
+        console.log('Silence detected - pausing active listening indicator');
+        // Just update the UI, don't stop recognition
+        setIsActivelyListening(false);
+      }, SILENCE_TIMEOUT);
+    }
+  };
+
   // Completely stop and clean up speech recognition
   const stopRecognitionCompletely = () => {
     console.log('Stopping speech recognition completely');
@@ -190,6 +218,12 @@ export default function TextTranslation({
     // Update state first
     setIsListening(false);
     setIsActivelyListening(false);
+
+    // Clear silence timer if exists
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
 
     // Then clean up the recognition object
     if (recognitionRef.current) {
@@ -237,6 +271,9 @@ export default function TextTranslation({
     // Update UI state immediately to show feedback
     setIsListening(true);
 
+    // Reset silence timer when starting recording
+    resetSilenceTimer();
+
     // Wait a shorter moment for cleanup to complete
     setTimeout(() => {
       if (!isMountedRef.current) return;
@@ -278,6 +315,9 @@ export default function TextTranslation({
           console.log('Recognition started successfully');
           setIsActivelyListening(true);
 
+          // Start the silence timer
+          resetSilenceTimer();
+
           toast({
             title: `Listening in ${
               getLanguageByCode(sourceLanguage)?.name || sourceLanguage
@@ -292,6 +332,12 @@ export default function TextTranslation({
           if (!isMountedRef.current) return;
 
           console.log(`Got results: ${event.results.length} items`);
+
+          // Reset silence timer when speech is detected
+          resetSilenceTimer();
+
+          // Make sure the active listening indicator is on
+          setIsActivelyListening(true);
 
           // Process all results
           let interimTranscript = '';
@@ -338,6 +384,12 @@ export default function TextTranslation({
 
             // Show we're temporarily paused
             setIsActivelyListening(false);
+
+            // Clear silence timer during the restart
+            if (silenceTimerRef.current) {
+              clearTimeout(silenceTimerRef.current);
+              silenceTimerRef.current = null;
+            }
 
             // Restart recognition for continuous experience on Android
             if (isListening && isMountedRef.current) {
@@ -507,6 +559,13 @@ export default function TextTranslation({
     // If we see the spinner but recognition isn't actually happening, reset state
     if (isListening && !isActivelyListening && isAndroid) {
       console.log('Detected stalled recording state - forcing reset');
+
+      // Clear silence timer
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
+      }
+
       // Force cleanup and restart
       stopRecognitionCompletely();
 
