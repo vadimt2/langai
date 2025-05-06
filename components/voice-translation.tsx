@@ -3,13 +3,25 @@
 import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Mic, Square, Play, Loader2, Save, Clock } from 'lucide-react';
+import {
+  Mic,
+  Square,
+  Play,
+  Loader2,
+  Save,
+  Clock,
+  Languages,
+} from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useHistory } from '@/context/history-context';
 import { useMobile } from '@/hooks/use-mobile';
 import { useRecaptchaContext } from '@/context/recaptcha-context';
 import { Progress } from '@/components/ui/progress';
 import { getLanguageByCode } from '@/data/languages';
+import {
+  detectLanguageMismatch,
+  getFrancLanguageName,
+} from '@/utils/language-detect';
 
 interface VoiceTranslationProps {
   sourceLanguage: string;
@@ -55,6 +67,12 @@ export default function VoiceTranslation({
   const [isAndroid, setIsAndroid] = useState(false);
   const [detectedWrongLanguage, setDetectedWrongLanguage] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [detectionDetails, setDetectionDetails] = useState<{
+    detectedLang: string;
+    confidence: number;
+    isReliable: boolean;
+  } | null>(null);
+  const [isDetectingLanguage, setIsDetectingLanguage] = useState(false);
 
   // Detect Android specifically
   useEffect(() => {
@@ -86,23 +104,36 @@ export default function VoiceTranslation({
         const finalText = transcript.trim();
         setRecordedText(finalText);
 
-        // Check if the detected text appears to be in the wrong language
-        if (isAndroid && checkLanguageMismatch(finalText)) {
-          setDetectedWrongLanguage(true);
+        // Only check for language mismatch if not English source
+        if (sourceLanguage !== 'en' && finalText.length >= 10) {
+          // Use our enhanced language detection
+          const detection = detectLanguageMismatch(finalText, sourceLanguage);
 
-          // Show options to the user
-          toast({
-            title: 'Wrong Language Detected',
-            description: `Android detected English instead of ${
-              getLanguageByCode(sourceLanguage)?.name
-            }. Converting automatically...`,
-            duration: 5000,
+          // Save detection details for UI
+          setDetectionDetails({
+            detectedLang: detection.detectedLang,
+            confidence: detection.confidence,
+            isReliable: detection.isReliable,
           });
 
-          // Auto-translate the English text to the selected language
-          autoCorrectLanguage(finalText);
-        } else {
-          setDetectedWrongLanguage(false);
+          if (detection.isMismatch && isAndroid) {
+            setDetectedWrongLanguage(true);
+
+            toast({
+              title: 'Language Mismatch Detected',
+              description: `Detected ${getFrancLanguageName(
+                detection.detectedLang
+              )} instead of ${
+                getLanguageByCode(sourceLanguage)?.name
+              }. Converting automatically...`,
+              duration: 5000,
+            });
+
+            // Auto-translate the misdetected text to the selected language
+            autoCorrectLanguage(finalText);
+          } else {
+            setDetectedWrongLanguage(false);
+          }
         }
       };
 
@@ -178,7 +209,7 @@ export default function VoiceTranslation({
       }
       stopTimer();
     };
-  }, [toast]);
+  }, [toast, sourceLanguage, isAndroid]);
 
   // Set language for speech recognition
   useEffect(() => {
@@ -404,70 +435,6 @@ export default function VoiceTranslation({
   // Calculate progress percentage
   const progressPercentage = (recordingTime / MAX_RECORDING_TIME) * 100;
 
-  // Add language mismatch detection function
-  const checkLanguageMismatch = (text: string) => {
-    // Skip for English source language or short texts
-    if (sourceLanguage === 'en' || text.length < 4) return false;
-
-    // Russian: Check for Cyrillic characters
-    if (sourceLanguage === 'ru') {
-      const cyrillicPattern = /[\u0400-\u04FF]/g;
-      const cyrillicChars = text.match(cyrillicPattern) || [];
-      const cyrillicRatio = cyrillicChars.length / text.length;
-
-      if (cyrillicRatio < 0.5) {
-        return true;
-      }
-    }
-
-    // Chinese: Check for Chinese characters
-    if (sourceLanguage === 'zh') {
-      const chinesePattern = /[\u4E00-\u9FFF]/g;
-      const chineseChars = text.match(chinesePattern) || [];
-      const chineseRatio = chineseChars.length / text.length;
-
-      if (chineseRatio < 0.5) {
-        return true;
-      }
-    }
-
-    // Japanese: Check for Japanese characters
-    if (sourceLanguage === 'ja') {
-      const japanesePattern = /[\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF]/g;
-      const japaneseChars = text.match(japanesePattern) || [];
-      const japaneseRatio = japaneseChars.length / text.length;
-
-      if (japaneseRatio < 0.5) {
-        return true;
-      }
-    }
-
-    // Arabic: Check for Arabic characters
-    if (sourceLanguage === 'ar') {
-      const arabicPattern = /[\u0600-\u06FF]/g;
-      const arabicChars = text.match(arabicPattern) || [];
-      const arabicRatio = arabicChars.length / text.length;
-
-      if (arabicRatio < 0.5) {
-        return true;
-      }
-    }
-
-    // Greek: Check for Greek characters
-    if (sourceLanguage === 'el') {
-      const greekPattern = /[\u0370-\u03FF]/g;
-      const greekChars = text.match(greekPattern) || [];
-      const greekRatio = greekChars.length / text.length;
-
-      if (greekRatio < 0.5) {
-        return true;
-      }
-    }
-
-    // No mismatch detected with the checks above
-    return false;
-  };
-
   // Add function to automatically translate misdetected English text to the selected language
   const autoCorrectLanguage = async (englishText: string) => {
     if (!englishText.trim() || sourceLanguage === 'en') return;
@@ -537,6 +504,71 @@ export default function VoiceTranslation({
     }
   };
 
+  // Add function to manually detect the language of the recorded text
+  const detectTextLanguage = async () => {
+    if (!recordedText || recordedText.length < 10) {
+      toast({
+        title: 'Text Too Short',
+        description:
+          'Please provide at least 10 characters for reliable detection.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsDetectingLanguage(true);
+
+    try {
+      const detection = detectLanguageMismatch(recordedText, sourceLanguage);
+
+      setDetectionDetails({
+        detectedLang: detection.detectedLang,
+        confidence: detection.confidence,
+        isReliable: detection.isReliable,
+      });
+
+      if (detection.detectedLang !== 'und') {
+        toast({
+          title: 'Language Detected',
+          description: `Detected language: ${getFrancLanguageName(
+            detection.detectedLang
+          )} (${(detection.confidence * 100).toFixed(0)}% confidence)`,
+          duration: 4000,
+        });
+
+        // If the detected language doesn't match the source language
+        if (detection.isMismatch && sourceLanguage !== 'en') {
+          setDetectedWrongLanguage(true);
+
+          // Ask if user wants to convert
+          toast({
+            title: 'Convert Text?',
+            description: `Would you like to convert from ${getFrancLanguageName(
+              detection.detectedLang
+            )} to ${getLanguageByCode(sourceLanguage)?.name}?`,
+            duration: 8000,
+          });
+        }
+      } else {
+        toast({
+          title: 'Detection Failed',
+          description:
+            'Could not reliably detect the language. Try with more text.',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error('Language detection error:', error);
+      toast({
+        title: 'Detection Error',
+        description: 'An error occurred while detecting the language.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDetectingLanguage(false);
+    }
+  };
+
   return (
     <div className='space-y-4 mt-4'>
       <div className='flex flex-col items-center space-y-4'>
@@ -603,19 +635,28 @@ export default function VoiceTranslation({
         {detectedWrongLanguage && !showManualInput && (
           <div className='w-full max-w-md p-3 bg-amber-50 border border-amber-200 rounded-md'>
             <p className='text-sm text-amber-700 text-center'>
-              <strong>Language Mismatch Detected:</strong>{' '}
+              <strong>Language Mismatch:</strong>{' '}
               {isTranscribing ? (
                 <>
-                  Converting English to{' '}
-                  {getLanguageByCode(sourceLanguage)?.name}...
+                  Converting{' '}
+                  {detectionDetails &&
+                    getFrancLanguageName(detectionDetails.detectedLang)}{' '}
+                  to {getLanguageByCode(sourceLanguage)?.name}...
                 </>
               ) : (
                 <>
-                  Android recognized English instead of{' '}
-                  {getLanguageByCode(sourceLanguage)?.name}.
+                  Detected{' '}
+                  {detectionDetails &&
+                    getFrancLanguageName(detectionDetails.detectedLang)}{' '}
+                  instead of {getLanguageByCode(sourceLanguage)?.name}.
                 </>
               )}
             </p>
+            {detectionDetails && detectionDetails.isReliable && (
+              <p className='text-xs text-amber-600 text-center mt-1'>
+                Confidence: {(detectionDetails.confidence * 100).toFixed(0)}%
+              </p>
+            )}
             <div className='flex justify-center mt-2 space-x-2'>
               {isTranscribing ? (
                 <div className='flex items-center space-x-2'>
@@ -734,7 +775,7 @@ export default function VoiceTranslation({
         <div>
           <Textarea value={recordedText} readOnly className='min-h-[80px]' />
 
-          <div className='flex justify-center mt-4'>
+          <div className='flex justify-center mt-4 space-x-2'>
             <Button
               onClick={handleTranslate}
               disabled={!recordedText.trim() || isTranslating || isDisabled}
@@ -747,6 +788,25 @@ export default function VoiceTranslation({
                 </>
               ) : (
                 'Translate'
+              )}
+            </Button>
+
+            <Button
+              variant='outline'
+              onClick={detectTextLanguage}
+              disabled={!recordedText.trim() || isDetectingLanguage}
+              className='sm:w-auto'
+            >
+              {isDetectingLanguage ? (
+                <>
+                  <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                  Detecting...
+                </>
+              ) : (
+                <>
+                  <Languages className='mr-2 h-4 w-4' />
+                  Detect Language
+                </>
               )}
             </Button>
           </div>
