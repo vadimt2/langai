@@ -108,6 +108,15 @@ async function translateText({
   }
 }
 
+// Add this key utility function at the top level of the file
+// This will help ensure we properly clean up and recreate APIs between uses
+function isSpeechRecognitionSupported() {
+  return (
+    typeof window !== 'undefined' &&
+    (window.SpeechRecognition || window.webkitSpeechRecognition)
+  );
+}
+
 export default function VoiceTranslation({
   sourceLanguage,
   targetLanguage,
@@ -119,6 +128,11 @@ export default function VoiceTranslation({
   const [recordingTime, setRecordingTime] = useState(0);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isAndroid, setIsAndroid] = useState(false);
+  const [cooldownActive, setCooldownActive] = useState(false);
+  const [speechSynthesisSupported, setSpeechSynthesisSupported] =
+    useState(true);
+  const [speechRecognitionSupported, setSpeechRecognitionSupported] =
+    useState(true);
 
   // Form state (simulating useFormState)
   const [manualInputText, setManualInputText] = useState('');
@@ -131,11 +145,13 @@ export default function VoiceTranslation({
 
   // UI state (simulating useOptimistic)
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isProcessingClick, setIsProcessingClick] = useState(false);
 
   const { toast } = useToast();
   const { addToHistory } = useHistory();
   const recognitionRef = useRef<any>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const cooldownTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isMobile = useMobile();
   const {
     getToken,
@@ -144,12 +160,304 @@ export default function VoiceTranslation({
   } = useRecaptchaContext();
   const [languageIndicator, setLanguageIndicator] = useState<string>('');
 
-  // Detect Android specifically
+  // Add a new state to track active Android listening state
+  const [isActivelyListening, setIsActivelyListening] = useState(true);
+
+  // Add a restart counter to prevent infinite restart loops
+  const restartAttemptsRef = useRef<number>(0);
+  const MAX_RESTART_ATTEMPTS = 3;
+
+  // Add a safety flag to prevent operations after component unmount
+  const isMountedRef = useRef<boolean>(true);
+
+  // Add this variable to the component
+  const [buttonCooldown, setButtonCooldown] = useState(false);
+
+  // Check for browser support on mount
   useEffect(() => {
+    isMountedRef.current = true;
+
+    // Check for speech recognition support
     if (typeof window !== 'undefined') {
+      const SpeechRecognition =
+        window.SpeechRecognition || window.webkitSpeechRecognition;
+      setSpeechRecognitionSupported(!!SpeechRecognition);
+
+      // Check for speech synthesis support
+      setSpeechSynthesisSupported(
+        typeof window.speechSynthesis !== 'undefined' &&
+          typeof window.SpeechSynthesisUtterance !== 'undefined'
+      );
+
+      // Detect Android
       setIsAndroid(/Android/i.test(navigator.userAgent));
     }
+
+    return () => {
+      isMountedRef.current = false;
+
+      // Clean up resources when component unmounts
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+          recognitionRef.current.abort?.();
+          recognitionRef.current = null;
+        } catch (e) {
+          // Ignore errors on unmount
+        }
+      }
+
+      // Clear timers
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+
+      if (cooldownTimerRef.current) {
+        clearTimeout(cooldownTimerRef.current);
+      }
+
+      // Cancel any ongoing speech
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        try {
+          window.speechSynthesis.cancel();
+        } catch (e) {
+          // Ignore errors on unmount
+        }
+      }
+    };
   }, []);
+
+  // Replace the toggleRecording function
+  const toggleRecording = () => {
+    // Prevent rapid clicks with simple cooldown
+    if (buttonCooldown) {
+      console.log('Button in cooldown');
+      return;
+    }
+
+    // Set cooldown immediately
+    setButtonCooldown(true);
+
+    console.log('Toggle recording - current state:', isRecording);
+
+    if (isRecording) {
+      // If recording, stop it
+      handleStopRecording();
+    } else {
+      // If not recording, start it
+      handleStartRecording();
+    }
+
+    // Release cooldown after 1 second
+    setTimeout(() => {
+      setButtonCooldown(false);
+    }, 1000);
+  };
+
+  // Create separate handler functions for cleaner separation
+  const handleStartRecording = () => {
+    console.log('Starting recording...');
+
+    // Clear previous state
+    setRecordedText('');
+    setTranslation('');
+    setTranslationNote(null);
+    setTranslationError(null);
+
+    // Clean up any existing recognition
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {
+        // Ignore errors
+      }
+      recognitionRef.current = null;
+    }
+
+    // Create new recognition instance
+    try {
+      const SpeechRecognition =
+        window.SpeechRecognition || window.webkitSpeechRecognition;
+
+      if (!SpeechRecognition) {
+        toast({
+          title: 'Speech Recognition Unavailable',
+          description: 'Your browser does not support speech recognition.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const recognition = new SpeechRecognition();
+
+      // Basic configuration
+      recognition.continuous = !isAndroid;
+      recognition.interimResults = !isAndroid;
+      recognition.lang = getLanguageCode(sourceLanguage);
+
+      // Set up event handlers
+      recognition.onstart = function () {
+        console.log('Recognition started');
+        setIsRecording(true);
+        setIsActivelyListening(true);
+        startTimer();
+      };
+
+      recognition.onresult = function (event: any) {
+        let transcript = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          if (event.results[i].isFinal) {
+            transcript += event.results[i][0].transcript + ' ';
+          }
+        }
+
+        if (transcript.trim()) {
+          setRecordedText((prev) => {
+            if (isAndroid) {
+              return prev ? prev + ' ' + transcript.trim() : transcript.trim();
+            } else {
+              return transcript.trim();
+            }
+          });
+        }
+      };
+
+      recognition.onerror = function (event: any) {
+        console.error('Recognition error:', event.error);
+        if (!['no-speech', 'aborted'].includes(event.error)) {
+          toast({
+            title: 'Recognition Error',
+            description: `Error: ${event.error}`,
+            variant: 'destructive',
+          });
+        }
+      };
+
+      recognition.onend = function () {
+        console.log('Recognition ended');
+
+        if (isAndroid && isRecording) {
+          // On Android, try to restart if we're still supposed to be recording
+          try {
+            recognition.start();
+            setIsActivelyListening(true);
+          } catch (e) {
+            console.error('Failed to restart recognition:', e);
+            // If restart fails, stop recording
+            setIsRecording(false);
+            setIsActivelyListening(false);
+            stopTimer();
+          }
+        } else {
+          // On other platforms, just end recording
+          setIsRecording(false);
+          setIsActivelyListening(false);
+          stopTimer();
+        }
+      };
+
+      // Store and start
+      recognitionRef.current = recognition;
+      recognition.start();
+
+      toast({
+        title: 'Listening',
+        description: `Recording in ${
+          getLanguageByCode(sourceLanguage)?.name || sourceLanguage
+        }`,
+        duration: 3000,
+      });
+    } catch (error) {
+      console.error('Error starting recognition:', error);
+      toast({
+        title: 'Recognition Error',
+        description: 'Could not start speech recognition.',
+        variant: 'destructive',
+      });
+      setIsRecording(false);
+      setIsActivelyListening(false);
+    }
+  };
+
+  const handleStopRecording = () => {
+    console.log('Stopping recording...');
+
+    // Update state first
+    setIsRecording(false);
+    setIsActivelyListening(false);
+    stopTimer();
+
+    // Then stop the recognition
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {
+        console.error('Error stopping recognition:', e);
+      }
+
+      // Clear the reference after a delay
+      setTimeout(() => {
+        recognitionRef.current = null;
+      }, 500);
+    }
+  };
+
+  // Completely redesigned text-to-speech function
+  const handleTextToSpeech = () => {
+    if (!translation || isSpeaking) return;
+
+    // First, make sure any previous speech is canceled
+    try {
+      window.speechSynthesis.cancel();
+    } catch (e) {
+      console.error('Error canceling previous speech:', e);
+    }
+
+    // Set speaking state
+    setIsSpeaking(true);
+
+    try {
+      // Create a simple utterance with minimal configuration
+      const utterance = new SpeechSynthesisUtterance(translation);
+      utterance.lang = targetLanguage; // Use the simple language code
+
+      // Handle speech end
+      utterance.onend = function () {
+        console.log('Speech ended');
+        setIsSpeaking(false);
+      };
+
+      // Handle speech errors
+      utterance.onerror = function (event) {
+        console.error('Speech error:', event);
+        setIsSpeaking(false);
+        toast({
+          title: 'Speech Error',
+          description: 'Could not play the translation.',
+          variant: 'destructive',
+        });
+      };
+
+      // Safety timeout to ensure speaking state is reset
+      setTimeout(() => {
+        if (isSpeaking) {
+          setIsSpeaking(false);
+        }
+      }, 30000); // 30 second maximum
+
+      // Speak
+      console.log('Starting speech synthesis');
+      window.speechSynthesis.speak(utterance);
+    } catch (error) {
+      console.error('Speech synthesis error:', error);
+      setIsSpeaking(false);
+      toast({
+        title: 'Speech Error',
+        description: 'Could not initialize speech playback.',
+        variant: 'destructive',
+      });
+    }
+  };
 
   // Implement exact language code mapping as suggested by ChatGPT
   const getLanguageCode = (langCode: string): string => {
@@ -335,246 +643,59 @@ export default function VoiceTranslation({
     return exactCodes[langCode] || langCode;
   };
 
-  // Improve the Android speech recognition implementation
-  useEffect(() => {
-    if (
-      typeof window !== 'undefined' &&
-      ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
-    ) {
-      const SpeechRecognition =
-        window.SpeechRecognition || window.webkitSpeechRecognition;
-
-      // Create new instance to ensure clean state
-      const recognition = new SpeechRecognition();
-
-      // Configure the recognition object - different settings for Android
-      if (isAndroid) {
-        recognition.continuous = false; // Use single results for Android (more reliable)
-        recognition.interimResults = false; // No interim results on Android
-        recognition.maxAlternatives = 1;
-      } else {
-        recognition.continuous = true;
-        recognition.interimResults = true;
-      }
-
-      // Set the exact BCP-47 language code (critical for Android)
-      const exactLanguageCode = getLanguageCode(sourceLanguage);
-      recognition.lang = exactLanguageCode;
-
-      console.log(
-        `Setting speech recognition language to: ${exactLanguageCode}`
-      );
-
-      recognition.onresult = (event: any) => {
-        let transcript = '';
-        const resultIndex = event.resultIndex || 0;
-
-        for (let i = resultIndex; i < event.results.length; i++) {
-          if (event.results[i].isFinal) {
-            transcript += event.results[i][0].transcript + ' ';
-          }
-        }
-
-        const finalText = transcript.trim();
-
-        // For Android, accumulate text instead of replacing
-        if (finalText) {
-          if (isAndroid) {
-            setRecordedText((prev) => {
-              if (!prev) return finalText;
-              return prev + ' ' + finalText;
-            });
-
-            // For Android, restart recognition to continue
-            try {
-              if (isRecording) {
-                recognition.stop();
-                setTimeout(() => {
-                  if (isRecording) {
-                    recognition.start();
-                  }
-                }, 300);
-              }
-            } catch (e) {
-              console.error('Error restarting Android recognition:', e);
-            }
-          } else {
-            // Non-Android behavior
-            setRecordedText(finalText);
-          }
-        }
-
-        // Show processing UI for immediate feedback
-        if (finalText.length > 0) {
-          setIsProcessing(false); // Keep UI clean
-        }
-      };
-
-      recognition.onerror = (event: any) => {
-        console.error('Speech recognition error:', event.error);
-
-        // Don't show Android "no-speech" errors as we restart automatically
-        if (!(isAndroid && event.error === 'no-speech')) {
-          // Show error message
-          toast({
-            title: 'Recognition Error',
-            description: `Error: ${event.error}. Please try again.`,
-            variant: 'destructive',
-          });
-        }
-
-        // For Android, try to restart on certain recoverable errors
-        if (
-          isAndroid &&
-          isRecording &&
-          ['network', 'aborted'].includes(event.error)
-        ) {
-          try {
-            setTimeout(() => {
-              if (isRecording) {
-                recognition.start();
-              }
-            }, 300);
-          } catch (e) {
-            console.error('Failed to restart recognition after error');
-            setIsRecording(false);
-            stopTimer();
-          }
-        } else {
-          setIsRecording(false);
-          stopTimer();
-        }
-      };
-
-      recognition.onend = () => {
-        // On Android, if still recording, restart recognition for continuous experience
-        if (isAndroid && isRecording) {
-          try {
-            setTimeout(() => {
-              if (isRecording) {
-                recognition.start();
-              }
-            }, 300);
-          } catch (e) {
-            console.error('Error restarting recognition:', e);
-            setIsRecording(false);
-            stopTimer();
-          }
-        } else if (!isAndroid) {
-          // Standard behavior for desktop
-          setIsRecording(false);
-          stopTimer();
-        }
-      };
-
-      // Store recognition object in ref
-      recognitionRef.current = recognition;
-    }
-
-    return () => {
-      // Clean up
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch (e) {
-          // Ignore errors on cleanup
-        }
-      }
-    };
-  }, [sourceLanguage, isAndroid, isRecording, toast]);
-
-  // Simplified recording function with best practices
-  const startRecording = () => {
-    // Clear previous data
-    setRecordedText('');
-    setTranslation('');
-    setTranslationNote(null);
-    setTranslationError(null);
-    setIsProcessing(false);
-
-    if (!recognitionRef.current) {
-      toast({
-        title: 'Speech Recognition Unavailable',
-        description: 'Speech recognition is not supported in this browser.',
-        variant: 'destructive',
-      });
-      return;
-    }
+  // Safe function to restart recognition with proper error handling
+  const safeRestartRecognition = (recognition: any) => {
+    if (!isMountedRef.current || !isRecording) return;
 
     try {
-      // Always set the language right before starting
-      const exactLanguageCode = getLanguageCode(sourceLanguage);
-      recognitionRef.current.lang = exactLanguageCode;
+      // First stop current recognition session
+      recognition.stop();
 
-      // Show which language we're using with platform-specific instructions
-      toast({
-        title: `Listening in ${
-          getLanguageByCode(sourceLanguage)?.name || sourceLanguage
-        }`,
-        description: isAndroid
-          ? `Speak in short phrases for better results. Using language code: ${exactLanguageCode}`
-          : 'Speak clearly for best results',
-        duration: 3000,
-      });
+      // Use a longer delay for safety
+      setTimeout(() => {
+        if (!isMountedRef.current || !isRecording) return;
 
-      // For Android devices, provide language examples to help with recognition
-      if (isAndroid) {
-        // Show example phrases for the selected language to help user
-        const examplePhrases = getExamplePhrases(sourceLanguage);
-        if (examplePhrases) {
-          setTimeout(() => {
-            if (isRecording) {
-              toast({
-                title: 'Tip: Try these example phrases',
-                description: examplePhrases,
-                duration: 5000,
-              });
-            }
-          }, 3500);
+        try {
+          recognition.start();
+          console.log('Recognition safely restarted');
+        } catch (e) {
+          console.error('Error restarting recognition:', e);
+
+          // If we've tried too many times, give up
+          if (restartAttemptsRef.current >= MAX_RESTART_ATTEMPTS) {
+            setIsRecording(false);
+            stopTimer();
+            toast({
+              title: 'Recognition Error',
+              description: 'Unable to continue recording. Please try again.',
+              variant: 'destructive',
+            });
+          }
         }
-      }
+      }, 300); // Use a longer delay for better stability
+    } catch (e) {
+      console.error('Error stopping recognition before restart:', e);
 
-      // Start recognition
-      recognitionRef.current.start();
-      setIsRecording(true);
-      startTimer();
-    } catch (error) {
-      console.error('Error starting recognition:', error);
-      toast({
-        title: 'Recognition Error',
-        description: 'Could not start speech recognition. Please try again.',
-        variant: 'destructive',
-      });
+      // If we get an error stopping, try a different approach
+      setTimeout(() => {
+        if (!isMountedRef.current || !isRecording) return;
+
+        try {
+          recognition.start();
+        } catch (finalE) {
+          console.error('Final restart error:', finalE);
+          setIsRecording(false);
+          stopTimer();
+        }
+      }, 500);
     }
-  };
-
-  // Helper function to provide language-specific example phrases
-  const getExamplePhrases = (langCode: string): string => {
-    const examples: Record<string, string> = {
-      en: "Try saying: 'Hello, how are you?' or 'What time is it?'",
-      es: "Intenta decir: 'Hola, ¿cómo estás?' o '¿Qué hora es?'",
-      fr: "Essayez de dire: 'Bonjour, comment allez-vous?' ou 'Quelle heure est-il?'",
-      de: "Versuchen Sie zu sagen: 'Hallo, wie geht es Ihnen?' oder 'Wie spät ist es?'",
-      ru: "Попробуйте сказать: 'Привет, как дела?' или 'Который час?'",
-      zh: "试着说: '你好，你好吗？' 或 '现在几点了？'",
-      ja: "試しに言ってみて: 'こんにちは、お元気ですか？' または '今何時ですか？'",
-      it: "Prova a dire: 'Ciao, come stai?' o 'Che ore sono?'",
-      pt: "Tente dizer: 'Olá, como você está?' ou 'Que horas são?'",
-      ar: "حاول أن تقول: 'مرحبا، كيف حالك؟' أو 'كم الساعة؟'",
-      hi: "कोशिश करें कहने की: 'नमस्ते, आप कैसे हैं?' या 'अभी क्या समय है?'",
-      ko: "이렇게 말해보세요: '안녕하세요, 어떻게 지내세요?' 또는 '지금 몇 시예요?'",
-    };
-
-    return (
-      examples[langCode] || 'Speak clearly in short phrases for best results'
-    );
   };
 
   // Timer effect for recording time limit
   useEffect(() => {
     if (isRecording) {
       if (recordingTime >= MAX_RECORDING_TIME) {
-        stopRecording();
+        handleStopRecording();
         toast({
           title: 'Time Limit Reached',
           description:
@@ -597,26 +718,6 @@ export default function VoiceTranslation({
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
-  };
-
-  const toggleRecording = () => {
-    if (isRecording) {
-      stopRecording();
-    } else {
-      startRecording();
-    }
-  };
-
-  const stopRecording = () => {
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch (e) {
-        console.error('Error stopping recognition:', e);
-      }
-    }
-    setIsRecording(false);
-    stopTimer();
   };
 
   // Improved translation function with better error handling
@@ -747,30 +848,6 @@ export default function VoiceTranslation({
     }
   };
 
-  const handleTextToSpeech = () => {
-    if (!translation || isSpeaking) return;
-
-    setIsSpeaking(true);
-
-    const utterance = new SpeechSynthesisUtterance(translation);
-    utterance.lang = targetLanguage;
-
-    utterance.onend = () => {
-      setIsSpeaking(false);
-    };
-
-    utterance.onerror = () => {
-      setIsSpeaking(false);
-      toast({
-        title: 'Speech Error',
-        description: 'Could not play the translation',
-        variant: 'destructive',
-      });
-    };
-
-    window.speechSynthesis.speak(utterance);
-  };
-
   const handleSave = () => {
     if (recordedText && translation) {
       addToHistory({
@@ -804,10 +881,18 @@ export default function VoiceTranslation({
           onClick={toggleRecording}
           variant={isRecording ? 'destructive' : 'default'}
           size='lg'
-          className='rounded-full h-16 w-16 flex items-center justify-center'
+          className={`rounded-full h-16 w-16 flex items-center justify-center ${
+            isRecording && isAndroid && !isActivelyListening
+              ? 'opacity-70 bg-orange-600'
+              : ''
+          }`}
         >
           {isRecording ? (
-            <Square className='h-6 w-6' />
+            isAndroid && !isActivelyListening ? (
+              <Loader2 className='h-6 w-6 animate-spin' />
+            ) : (
+              <Square className='h-6 w-6' />
+            )
           ) : (
             <Mic className='h-6 w-6' />
           )}
@@ -818,11 +903,24 @@ export default function VoiceTranslation({
 
         <p className='text-sm text-center font-medium'>
           {isRecording
-            ? `Recording in ${
-                getLanguageByCode(sourceLanguage)?.name || sourceLanguage
-              }`
+            ? isAndroid && !isActivelyListening
+              ? 'Paused between phrases - continue speaking!'
+              : `Recording in ${
+                  getLanguageByCode(sourceLanguage)?.name || sourceLanguage
+                }`
             : 'Press the microphone button to start recording'}
         </p>
+
+        {/* Show Android-specific instructions */}
+        {isRecording && isAndroid && (
+          <div className='text-xs text-muted-foreground bg-muted p-2 rounded-md'>
+            {isActivelyListening
+              ? 'Actively listening... Speak now!'
+              : 'Briefly paused... Continue speaking!'}
+            <br />
+            For best results, pause slightly between phrases.
+          </div>
+        )}
 
         {/* Show the exact language code being used (helpful for debugging) */}
         {isRecording && isAndroid && (
