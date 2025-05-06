@@ -87,7 +87,9 @@ interface TextTranslationProps {
 const RECORDING_RESTART_DELAY = 1000; // Reduce from 1500ms to 1000ms
 const RECORDING_COOLDOWN = 300; // Reduce from 1500ms to 300ms (just enough to prevent double-clicks)
 const RECORDING_CLEANUP_TIMEOUT = 500; // Reduce from 800ms to 500ms
-const SILENCE_TIMEOUT = 1500; // New constant for silence detection (1.5 seconds)
+const SILENCE_TIMEOUT = 1500; // General silence detection (1.5 seconds)
+const ANDROID_SILENCE_TIMEOUT = 800; // Shorter timeout for Android (800ms)
+const NO_SPEECH_TIMEOUT = 3000; // Auto-stop recording if no speech detected after 3 seconds
 
 export default function TextTranslation({
   sourceLanguage,
@@ -130,6 +132,9 @@ export default function TextTranslation({
   // Add a new ref for silence detection timer
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Add a timer for auto-stopping if no speech is detected
+  const noSpeechTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   // Detect Android device
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -163,6 +168,12 @@ export default function TextTranslation({
       if (silenceTimerRef.current) {
         clearTimeout(silenceTimerRef.current);
         silenceTimerRef.current = null;
+      }
+
+      // Clean up no-speech timer if exists
+      if (noSpeechTimerRef.current) {
+        clearTimeout(noSpeechTimerRef.current);
+        noSpeechTimerRef.current = null;
       }
     };
   }, []);
@@ -203,11 +214,29 @@ export default function TextTranslation({
 
     // Only set a new timer if we're actively listening
     if (isListening && isActivelyListening) {
-      silenceTimerRef.current = setTimeout(() => {
-        console.log('Silence detected - pausing active listening indicator');
-        // Just update the UI, don't stop recognition
-        setIsActivelyListening(false);
-      }, SILENCE_TIMEOUT);
+      silenceTimerRef.current = setTimeout(
+        () => {
+          console.log('Silence detected - pausing active listening indicator');
+          // Just update the UI, don't stop recognition
+          setIsActivelyListening(false);
+
+          // On Android, after short silence, we should force the spinner to stop
+          if (isAndroid) {
+            // After silence is detected, set a fallback to fully stop if nothing happens
+            if (noSpeechTimerRef.current) {
+              clearTimeout(noSpeechTimerRef.current);
+            }
+
+            noSpeechTimerRef.current = setTimeout(() => {
+              if (isListening && !isActivelyListening) {
+                console.log('Extended silence detected - stopping recognition');
+                stopRecognitionCompletely();
+              }
+            }, NO_SPEECH_TIMEOUT);
+          }
+        },
+        isAndroid ? ANDROID_SILENCE_TIMEOUT : SILENCE_TIMEOUT
+      );
     }
   };
 
@@ -219,10 +248,15 @@ export default function TextTranslation({
     setIsListening(false);
     setIsActivelyListening(false);
 
-    // Clear silence timer if exists
+    // Clear all timers
     if (silenceTimerRef.current) {
       clearTimeout(silenceTimerRef.current);
       silenceTimerRef.current = null;
+    }
+
+    if (noSpeechTimerRef.current) {
+      clearTimeout(noSpeechTimerRef.current);
+      noSpeechTimerRef.current = null;
     }
 
     // Then clean up the recognition object
@@ -339,6 +373,12 @@ export default function TextTranslation({
           // Make sure the active listening indicator is on
           setIsActivelyListening(true);
 
+          // Clear no-speech timer if it exists - we got speech!
+          if (noSpeechTimerRef.current) {
+            clearTimeout(noSpeechTimerRef.current);
+            noSpeechTimerRef.current = null;
+          }
+
           // Process all results
           let interimTranscript = '';
           let finalTranscript = '';
@@ -403,23 +443,16 @@ export default function TextTranslation({
           if (!isMountedRef.current) return;
 
           console.error(`Recognition error: ${event.error}`);
+
+          // Immediately stop spinner on any error
           setIsActivelyListening(false);
 
-          // Don't show "aborted" errors to the user - these are expected during restart
-          if (event.error === 'aborted') {
-            console.log(
-              'Recognition aborted - this is expected during restart'
-            );
+          // For 'no-speech' errors on Android, stop spinning immediately
+          if (isAndroid && event.error === 'no-speech') {
+            console.log('No speech detected on Android - stopping spinner');
+            setIsActivelyListening(false);
 
-            // On Android, completely recreate the recognition instance
-            if (isAndroid && isListening && isMountedRef.current) {
-              // Wait a significant time before restarting
-              setTimeout(() => {
-                if (isListening && isMountedRef.current) {
-                  createAndStartNewRecognition();
-                }
-              }, RECORDING_RESTART_DELAY);
-            }
+            // Don't show toast for no-speech on Android
             return;
           }
 
@@ -477,6 +510,21 @@ export default function TextTranslation({
 
             // Increment restart counter
             restartAttemptsRef.current++;
+
+            // Stop spinner during restart period
+            setIsActivelyListening(false);
+
+            // Clear silence timer during the restart
+            if (silenceTimerRef.current) {
+              clearTimeout(silenceTimerRef.current);
+              silenceTimerRef.current = null;
+            }
+
+            // Clear no-speech timer
+            if (noSpeechTimerRef.current) {
+              clearTimeout(noSpeechTimerRef.current);
+              noSpeechTimerRef.current = null;
+            }
 
             // Wait before creating a new instance
             setTimeout(() => {
@@ -881,6 +929,55 @@ export default function TextTranslation({
     return `Original (${sourceLangName}):\n${inputText}\n\nTranslation (${targetLangName}):\n${translatedText}`;
   };
 
+  // Add special handling for Android in the UI
+  const renderMicrophoneButton = () => {
+    // Determine the appropriate status and appearance
+    let buttonVariant:
+      | 'default'
+      | 'destructive'
+      | 'outline'
+      | 'secondary'
+      | 'ghost'
+      | 'link' = isListening ? 'destructive' : 'ghost';
+    let backgroundColor = '';
+    let buttonContent;
+
+    if (isListening) {
+      if (isAndroid) {
+        if (isActivelyListening) {
+          // Active listening on Android - show spinner
+          buttonContent = <Loader2 className='h-4 w-4 animate-spin' />;
+          backgroundColor = 'bg-destructive hover:bg-destructive/90';
+        } else {
+          // On Android but not actively listening - show mic without spinner
+          buttonContent = <Mic className='h-4 w-4 text-white' />;
+          backgroundColor = 'bg-orange-600 hover:bg-orange-700';
+        }
+      } else {
+        // Desktop - just show the mic when recording
+        buttonContent = <Mic className='h-4 w-4 text-white' />;
+        backgroundColor = 'bg-destructive hover:bg-destructive/90';
+      }
+    } else {
+      // Not recording - normal mic
+      buttonContent = <Mic className='h-4 w-4' />;
+      backgroundColor = 'bg-muted/50 hover:bg-muted';
+    }
+
+    return (
+      <Button
+        variant={buttonVariant}
+        size='icon'
+        onClick={handleMicrophoneClick}
+        className={`h-8 w-8 rounded-full ${backgroundColor}`}
+        aria-label={isListening ? 'Stop recording' : 'Start voice recording'}
+        title={isListening ? 'Stop recording' : 'Record speech'}
+      >
+        {buttonContent}
+      </Button>
+    );
+  };
+
   return (
     <div className='space-y-4 mt-4'>
       <div>
@@ -964,33 +1061,8 @@ export default function TextTranslation({
                   </Button>
                 )}
 
-                {/* Voice recording button in input field */}
-                <Button
-                  variant={isListening ? 'destructive' : 'ghost'}
-                  size='icon'
-                  onClick={handleMicrophoneClick}
-                  className={`h-8 w-8 rounded-full ${
-                    isListening
-                      ? isAndroid && !isActivelyListening
-                        ? 'bg-orange-600 hover:bg-orange-700'
-                        : 'bg-destructive hover:bg-destructive/90'
-                      : 'bg-muted/50 hover:bg-muted'
-                  }`}
-                  aria-label={
-                    isListening ? 'Stop recording' : 'Start voice recording'
-                  }
-                  title={isListening ? 'Stop recording' : 'Record speech'}
-                >
-                  {isListening ? (
-                    isAndroid && !isActivelyListening ? (
-                      <Loader2 className='h-4 w-4 animate-spin' />
-                    ) : (
-                      <Mic className='h-4 w-4 text-white' />
-                    )
-                  ) : (
-                    <Mic className='h-4 w-4' />
-                  )}
-                </Button>
+                {/* Voice recording button in input field - REPLACE THIS PART */}
+                {renderMicrophoneButton()}
 
                 {detectedLanguage && sourceLanguage !== detectedLanguage && (
                   <div
