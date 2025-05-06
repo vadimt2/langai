@@ -12,6 +12,8 @@ import {
   Clock,
   Languages,
   InfoIcon,
+  Copy,
+  VolumeIcon,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useHistory } from '@/context/history-context';
@@ -54,7 +56,7 @@ export default function VoiceTranslation({
 }: VoiceTranslationProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [recordedText, setRecordedText] = useState('');
-  const [translatedText, setTranslatedText] = useState('');
+  const [translation, setTranslation] = useState('');
   const [isTranslating, setIsTranslating] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -82,6 +84,7 @@ export default function VoiceTranslation({
   } = useRecaptchaContext();
   const [isAndroid, setIsAndroid] = useState(false);
   const [languageIndicator, setLanguageIndicator] = useState<string>('');
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   // Detect Android specifically
   useEffect(() => {
@@ -90,10 +93,42 @@ export default function VoiceTranslation({
     }
   }, []);
 
-  // More explicitly initialize speech recognition with correct language
-  useEffect(() => {
-    let recognition: any = null;
+  // Implement exact language code mapping as suggested by ChatGPT
+  const getLanguageCode = (langCode: string): string => {
+    // Direct mapping of language codes to BCP-47 format
+    const exactCodes: Record<string, string> = {
+      ru: 'ru-RU', // Russian
+      es: 'es-ES', // Spanish
+      fr: 'fr-FR', // French
+      de: 'de-DE', // German
+      it: 'it-IT', // Italian
+      zh: 'zh-CN', // Chinese (Simplified)
+      ja: 'ja-JP', // Japanese
+      ar: 'ar-SA', // Arabic
+      hi: 'hi-IN', // Hindi
+      pt: 'pt-BR', // Portuguese
+      nl: 'nl-NL', // Dutch
+      ko: 'ko-KR', // Korean
+      tr: 'tr-TR', // Turkish
+      pl: 'pl-PL', // Polish
+      uk: 'uk-UA', // Ukrainian
+      he: 'he-IL', // Hebrew
+      el: 'el-GR', // Greek
+      cs: 'cs-CZ', // Czech
+      hu: 'hu-HU', // Hungarian
+      sv: 'sv-SE', // Swedish
+      fi: 'fi-FI', // Finnish
+      da: 'da-DK', // Danish
+      ro: 'ro-RO', // Romanian
+      no: 'nb-NO', // Norwegian
+      en: 'en-US', // English (US)
+    };
 
+    return exactCodes[langCode] || langCode;
+  };
+
+  // Initialize speech recognition with correct language code
+  useEffect(() => {
     if (
       typeof window !== 'undefined' &&
       ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
@@ -101,60 +136,20 @@ export default function VoiceTranslation({
       const SpeechRecognition =
         window.SpeechRecognition || window.webkitSpeechRecognition;
 
-      // Create a new recognition instance when language changes
-      recognition = new SpeechRecognition();
+      // Create new instance to ensure clean state
+      const recognition = new SpeechRecognition();
+
+      // Configure the recognition object
       recognition.continuous = true;
       recognition.interimResults = true;
 
-      // Add extended language code mapping with regional variants
-      const languageMapping: Record<string, string[]> = {
-        ru: ['ru-RU', 'ru'],
-        fr: ['fr-FR', 'fr-CA', 'fr'],
-        de: ['de-DE', 'de-AT', 'de'],
-        es: ['es-ES', 'es-MX', 'es'],
-        it: ['it-IT', 'it'],
-        zh: ['zh-CN', 'zh-TW', 'zh'],
-        ja: ['ja-JP', 'ja'],
-        ar: ['ar-SA', 'ar-EG', 'ar'],
-        hi: ['hi-IN', 'hi'],
-        pt: ['pt-BR', 'pt-PT', 'pt'],
-        en: ['en-US', 'en-GB', 'en-AU', 'en'],
-      };
+      // Set the exact BCP-47 language code (critical for Android)
+      const exactLanguageCode = getLanguageCode(sourceLanguage);
+      recognition.lang = exactLanguageCode;
 
-      // For Android, try several language codes to see which ones work best
-      if (isAndroid && languageMapping[sourceLanguage]) {
-        // Test which language code works best
-        const variants = languageMapping[sourceLanguage];
-        recognition.lang = variants[0]; // Start with first option
-
-        console.log('Setting Android language to:', recognition.lang);
-      } else {
-        recognition.lang = sourceLanguage;
-      }
-
-      // Add a debug function to log language detection
-      const logLanguageInfo = (text: string) => {
-        if (text.length < 20) return; // Skip short text
-
-        // Try to detect the actual language being used
-        try {
-          const detection = detectLanguageMismatch(text, sourceLanguage);
-
-          if (detection.isReliable) {
-            const detectedName = getFrancLanguageName(detection.detectedLang);
-            console.log(
-              `Detected language: ${detectedName} (${
-                detection.detectedLang
-              }), Confidence: ${(detection.confidence * 100).toFixed(0)}%`
-            );
-
-            // Update the language indicator
-            setLanguageIndicator(detectedName);
-          }
-        } catch (e) {
-          console.error('Language detection error:', e);
-        }
-      };
+      console.log(
+        `Setting speech recognition language to: ${exactLanguageCode}`
+      );
 
       recognition.onresult = (event: any) => {
         let transcript = '';
@@ -167,81 +162,80 @@ export default function VoiceTranslation({
         const finalText = transcript.trim();
         setRecordedText(finalText);
         setFinalProcessedText(finalText);
-
-        // Log language info for debugging
-        logLanguageInfo(finalText);
       };
 
       recognition.onerror = (event: any) => {
-        console.error('Speech recognition error', event.error);
+        console.error('Speech recognition error:', event.error);
 
-        // Show appropriate error messages
-        if (event.error === 'no-speech') {
-          toast({
-            title: 'No Speech Detected',
-            description: 'No speech was detected. Please try again.',
-            variant: 'destructive',
-          });
-        } else if (
-          event.error === 'not-allowed' ||
-          event.error === 'permission-denied'
-        ) {
-          toast({
-            title: 'Microphone Access Denied',
-            description:
-              'Please allow microphone access to use voice translation.',
-            variant: 'destructive',
-          });
-        } else if (event.error === 'audio-capture') {
-          toast({
-            title: 'Microphone Error',
-            description:
-              'No microphone was found or it is not working properly.',
-            variant: 'destructive',
-          });
-        } else if (event.error === 'language-not-supported') {
-          toast({
-            title: 'Language Not Supported',
-            description: `The selected language (${
-              getLanguageByCode(sourceLanguage)?.name || sourceLanguage
-            }) is not supported by your browser's speech recognition.`,
-            variant: 'destructive',
-          });
-
-          // Show manual input option for Android devices with non-English languages
-          if (isAndroid && sourceLanguage !== 'en') {
-            setShowManualInput(true);
-          }
-        } else {
-          toast({
-            title: 'Recognition Error',
-            description: `Error: ${event.error}. Please try again.`,
-            variant: 'destructive',
-          });
-
-          // Show manual input option for Android devices with any error
-          if (isAndroid && sourceLanguage !== 'en') {
-            setShowManualInput(true);
-          }
-        }
+        // Show error message
+        toast({
+          title: 'Recognition Error',
+          description: `Error: ${event.error}. Please try again.`,
+          variant: 'destructive',
+        });
 
         setIsRecording(false);
         stopTimer();
       };
 
+      // Store recognition object in ref
       recognitionRef.current = recognition;
     }
 
     return () => {
-      if (recognition) {
+      // Clean up
+      if (recognitionRef.current) {
         try {
-          recognition.stop();
+          recognitionRef.current.stop();
         } catch (e) {
-          console.error('Error stopping recognition:', e);
+          // Ignore errors on cleanup
         }
       }
     };
-  }, [sourceLanguage, isAndroid, toast]); // Recreate recognition when language changes
+  }, [sourceLanguage, toast]);
+
+  // Simplify the start recording function
+  const startRecording = () => {
+    setRecordedText('');
+    setFinalProcessedText('');
+    setShowManualInput(false);
+
+    if (!recognitionRef.current) {
+      toast({
+        title: 'Speech Recognition Unavailable',
+        description: 'Speech recognition is not supported in this browser.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      // Always set the language right before starting
+      const exactLanguageCode = getLanguageCode(sourceLanguage);
+      recognitionRef.current.lang = exactLanguageCode;
+
+      // Show which language we're using
+      toast({
+        title: `Listening in ${getLanguageByCode(sourceLanguage)?.name}`,
+        description: isAndroid
+          ? `Using language code: ${exactLanguageCode}`
+          : 'Speak clearly for best results',
+        duration: 3000,
+      });
+
+      // Start recognition
+      recognitionRef.current.start();
+      setIsRecording(true);
+      startTimer();
+    } catch (error) {
+      console.error('Error starting recognition:', error);
+      toast({
+        title: 'Recognition Error',
+        description: 'Could not start speech recognition. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
 
   // Timer effect for recording time limit
   useEffect(() => {
@@ -277,51 +271,6 @@ export default function VoiceTranslation({
       stopRecording();
     } else {
       startRecording();
-    }
-  };
-
-  const startRecording = () => {
-    setRecordedText('');
-    setFinalProcessedText('');
-    setShowManualInput(false);
-
-    // For Android with non-English, provide a clearer message
-    if (sourceLanguage !== 'en' && isAndroid) {
-      toast({
-        title: `Recording in ${getLanguageByCode(sourceLanguage)?.name}`,
-        description:
-          'Speak clearly and pause between sentences for better recognition.',
-        variant: 'default',
-        duration: 4000,
-      });
-    }
-
-    if (recognitionRef.current) {
-      try {
-        // Ensure language is set correctly right before starting
-        recognitionRef.current.lang = sourceLanguage;
-
-        // Stop any existing recognition first to reset
-        try {
-          recognitionRef.current.stop();
-        } catch (e) {
-          // Ignore errors from stopping non-started recognition
-        }
-
-        // Small delay to ensure clean restart
-        setTimeout(() => {
-          recognitionRef.current.start();
-          setIsRecording(true);
-          startTimer();
-        }, 100);
-      } catch (error) {
-        console.error('Error starting recognition:', error);
-        toast({
-          title: 'Recognition Error',
-          description: 'Could not start speech recognition. Please try again.',
-          variant: 'destructive',
-        });
-      }
     }
   };
 
@@ -426,87 +375,58 @@ export default function VoiceTranslation({
   };
 
   // Update the handleTranslate method to use finalProcessedText
-  const handleTranslate = async () => {
-    // Use the processed text for translation instead of raw recorded text
-    const textToTranslate = finalProcessedText || recordedText;
+  const handleTranslate = () => {
+    if (!recordedText.trim() || isTranslating || isDisabled) return;
 
-    if (!textToTranslate.trim() || isTranslating) return;
-
+    setTranslation('');
+    setTranslationNote('');
     setIsTranslating(true);
-    setTranslationNote(null); // Clear previous notes
 
-    try {
-      const recaptchaToken = recaptchaLoaded ? await getToken('translate') : '';
-
-      const response = await fetch('/api/translate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          text: textToTranslate,
-          sourceLanguage,
-          targetLanguage,
-          model,
-          recaptchaToken,
-        }),
-      });
-
-      // Get the response text first
-      const responseText = await response.text();
-
-      // Try to parse as JSON
-      let data;
-      try {
-        data = JSON.parse(responseText);
-      } catch (e) {
-        console.error('Failed to parse response as JSON:', e);
-        throw new Error(
-          `Invalid JSON response: ${responseText.substring(0, 100)}...`
-        );
-      }
-
-      if (!response.ok) {
-        // Special handling for reCAPTCHA failures
-        if (data.recaptchaFailed) {
-          throw new Error(
-            'Security verification failed. Please try again later.'
-          );
+    fetch('/api/translate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text: recordedText,
+        sourceLanguage,
+        targetLanguage,
+        model,
+      }),
+    })
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
         }
-        throw new Error(data.error || 'Translation failed');
-      }
+        return res.json();
+      })
+      .then((data) => {
+        setTranslation(data.translatedText);
 
-      if (!data.translatedText) {
-        throw new Error('No translation returned');
-      }
-
-      setTranslatedText(data.translatedText);
-
-      // Set translation note if available
-      if (data.translationNote) {
-        setTranslationNote(data.translationNote);
-      }
-    } catch (error) {
-      console.error('Translation error:', error);
-      toast({
-        title: 'Translation Error',
-        description:
-          error instanceof Error
-            ? error.message
-            : 'Failed to translate voice. Please try again.',
-        variant: 'destructive',
+        // Set translation note if available
+        if (data.translationNote) {
+          setTranslationNote(data.translationNote);
+        }
+      })
+      .catch((error) => {
+        console.error('Translation error:', error);
+        toast({
+          title: 'Translation Error',
+          description: 'Failed to translate. Please try again.',
+          variant: 'destructive',
+        });
+      })
+      .finally(() => {
+        setIsTranslating(false);
       });
-    } finally {
-      setIsTranslating(false);
-    }
   };
 
   const playTranslation = () => {
-    if (!translatedText || isPlaying) return;
+    if (!translation || isPlaying) return;
 
     setIsPlaying(true);
 
-    const utterance = new SpeechSynthesisUtterance(translatedText);
+    const utterance = new SpeechSynthesisUtterance(translation);
     utterance.lang = targetLanguage;
 
     utterance.onend = () => {
@@ -526,12 +446,12 @@ export default function VoiceTranslation({
   };
 
   const handleSave = () => {
-    if (recordedText && translatedText) {
+    if (recordedText && translation) {
       addToHistory({
         sourceLanguage,
         targetLanguage,
         sourceText: recordedText,
-        translatedText,
+        translatedText: translation,
         timestamp: new Date().toISOString(),
         mode: 'voice',
       });
@@ -627,6 +547,40 @@ export default function VoiceTranslation({
     );
   }, [sourceLanguage]);
 
+  const handleCopyTranslation = () => {
+    if (translation) {
+      navigator.clipboard.writeText(translation);
+      toast({
+        title: 'Copied',
+        description: 'Translation copied to clipboard',
+      });
+    }
+  };
+
+  const handleTextToSpeech = () => {
+    if (!translation || isSpeaking) return;
+
+    setIsSpeaking(true);
+
+    const utterance = new SpeechSynthesisUtterance(translation);
+    utterance.lang = targetLanguage;
+
+    utterance.onend = () => {
+      setIsSpeaking(false);
+    };
+
+    utterance.onerror = () => {
+      setIsSpeaking(false);
+      toast({
+        title: 'Speech Error',
+        description: 'Could not play the translation',
+        variant: 'destructive',
+      });
+    };
+
+    window.speechSynthesis.speak(utterance);
+  };
+
   return (
     <div className='space-y-4 mt-4'>
       <div className='flex flex-col items-center space-y-4'>
@@ -646,208 +600,40 @@ export default function VoiceTranslation({
           </span>
         </Button>
 
-        {/* Language indicator with better guidance for Android */}
-        <div className='flex items-center space-x-1'>
-          <p className='text-sm text-center'>
-            {isRecording
-              ? `Recording... Speak now in ${
-                  getLanguageByCode(sourceLanguage)?.name
-                }`
-              : 'Press the microphone button to start recording'}
-          </p>
-
-          {/* Information tooltip for Android users */}
-          {isAndroid && sourceLanguage !== 'en' && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <InfoIcon className='h-4 w-4 text-muted-foreground cursor-help' />
-                </TooltipTrigger>
-                <TooltipContent side='top' className='max-w-sm'>
-                  <p>For best results on Android:</p>
-                  <ul className='list-disc pl-4 text-xs mt-1'>
-                    <li>Speak clearly and directly into microphone</li>
-                    <li>Pause between phrases for better recognition</li>
-                    <li>Avoid background noise</li>
-                    <li>Use short, common phrases</li>
-                  </ul>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-        </div>
-
-        {/* Display current detected language when recording */}
-        {isRecording && languageIndicator && (
-          <div className='px-2 py-1 bg-primary/10 rounded-full text-xs text-primary-foreground/90 flex items-center space-x-1'>
-            <span>Detected language: {languageIndicator}</span>
-          </div>
-        )}
-
-        {/* Add speech examples for Android users */}
-        {isAndroid &&
-          sourceLanguage !== 'en' &&
-          !isRecording &&
-          !recordedText && (
-            <div className='w-full max-w-md p-3 bg-muted rounded-md mt-2'>
-              <p className='text-sm font-medium'>
-                Try these phrases in {getLanguageByCode(sourceLanguage)?.name}:
-              </p>
-              <div className='mt-2 space-y-1 text-sm'>
-                {sourceLanguage === 'ru' && (
-                  <>
-                    <p>• "Добрый день" (Good afternoon)</p>
-                    <p>• "Как дела?" (How are you?)</p>
-                    <p>• "Спасибо большое" (Thank you very much)</p>
-                  </>
-                )}
-                {sourceLanguage === 'fr' && (
-                  <>
-                    <p>• "Bonjour" (Hello)</p>
-                    <p>• "Comment ça va?" (How are you?)</p>
-                    <p>• "Merci beaucoup" (Thank you very much)</p>
-                  </>
-                )}
-                {sourceLanguage === 'de' && (
-                  <>
-                    <p>• "Guten Tag" (Good day)</p>
-                    <p>• "Wie geht es dir?" (How are you?)</p>
-                    <p>• "Vielen Dank" (Thank you very much)</p>
-                  </>
-                )}
-                {sourceLanguage === 'es' && (
-                  <>
-                    <p>• "Buenos días" (Good morning)</p>
-                    <p>• "¿Cómo estás?" (How are you?)</p>
-                    <p>• "Muchas gracias" (Thank you very much)</p>
-                  </>
-                )}
-                {!['ru', 'fr', 'de', 'es'].includes(sourceLanguage) && (
-                  <p>
-                    Try speaking a simple greeting or question in{' '}
-                    {getLanguageByCode(sourceLanguage)?.name}
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-
-        {/* Show manual input suggestion and button for Android users */}
-        {isAndroid &&
-          sourceLanguage !== 'en' &&
-          !isRecording &&
-          !showManualInput && (
-            <div className='text-center'>
-              <p className='text-xs text-amber-600 mt-1 mb-2'>
-                Android has limited support for{' '}
-                {getLanguageByCode(sourceLanguage)?.name || sourceLanguage}{' '}
-                speech recognition.
-              </p>
-              <Button
-                variant='outline'
-                size='sm'
-                onClick={() => setShowManualInput(true)}
-                className='text-xs'
-              >
-                Switch to manual text input
-              </Button>
-            </div>
-          )}
-
-        {/* Show wrong language warning if detected */}
-        {detectedWrongLanguage && !showManualInput && (
-          <div className='w-full max-w-md p-3 bg-amber-50 border border-amber-200 rounded-md'>
-            <p className='text-sm text-amber-700 text-center'>
-              <strong>Language Mismatch:</strong>{' '}
-              {isProcessingLanguage ? (
-                <>
-                  Converting{' '}
-                  {detectionDetails &&
-                    getFrancLanguageName(detectionDetails.detectedLang)}{' '}
-                  to {getLanguageByCode(sourceLanguage)?.name}...
-                </>
-              ) : (
-                <>
-                  Detected{' '}
-                  {detectionDetails &&
-                    getFrancLanguageName(detectionDetails.detectedLang)}{' '}
-                  instead of {getLanguageByCode(sourceLanguage)?.name}.
-                </>
-              )}
-            </p>
-            {detectionDetails && detectionDetails.isReliable && (
-              <p className='text-xs text-amber-600 text-center mt-1'>
-                Confidence: {(detectionDetails.confidence * 100).toFixed(0)}%
-              </p>
-            )}
-            <div className='flex justify-center mt-2 space-x-2'>
-              {isTranscribing ? (
-                <div className='flex items-center space-x-2'>
-                  <Loader2 className='h-4 w-4 animate-spin' />
-                  <span className='text-xs'>Converting...</span>
-                </div>
-              ) : (
-                <>
-                  <Button
-                    variant='outline'
-                    size='sm'
-                    onClick={() => setShowManualInput(true)}
-                    className='text-xs'
-                  >
-                    Manual Input
-                  </Button>
-                  <Button
-                    variant='outline'
-                    size='sm'
-                    onClick={() => processRecordedSpeech(recordedText)}
-                    className='text-xs'
-                  >
-                    Try Auto-Convert
-                  </Button>
-                  <Button
-                    variant='ghost'
-                    size='sm'
-                    onClick={() => {
-                      setDetectedWrongLanguage(false);
-                      setRecordedText('');
-                    }}
-                    className='text-xs'
-                  >
-                    Cancel
-                  </Button>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Manual input option UI */}
-        {showManualInput && (
-          <div className='w-full max-w-md mt-4'>
-            <div className='flex justify-between items-center mb-2'>
-              <p className='text-sm'>
-                Type your text in{' '}
-                {getLanguageByCode(sourceLanguage)?.name || sourceLanguage}:
-              </p>
-              <Button
-                variant='ghost'
-                size='sm'
-                onClick={() => setShowManualInput(false)}
-                className='text-xs'
-              >
-                Try voice again
-              </Button>
-            </div>
-            <Textarea
-              value={recordedText}
-              onChange={(e) => setRecordedText(e.target.value)}
-              placeholder={`Type your text in ${
+        <p className='text-sm text-center font-medium'>
+          {isRecording
+            ? `Recording in ${
                 getLanguageByCode(sourceLanguage)?.name || sourceLanguage
-              }...`}
-              className='min-h-[80px]'
-            />
+              }`
+            : 'Press the microphone button to start recording'}
+        </p>
 
-            {/* Translation button */}
+        {/* Show the exact language code being used (helpful for debugging) */}
+        {isRecording && isAndroid && (
+          <div className='text-xs text-muted-foreground'>
+            Using language code: {getLanguageCode(sourceLanguage)}
+          </div>
+        )}
+
+        {isRecording && (
+          <div className='w-full max-w-md space-y-2'>
+            <div className='flex justify-between items-center'>
+              <p className='text-sm font-medium'>Recording time:</p>
+              <span className='text-sm tabular-nums'>
+                {formatTime(recordingTime)}
+              </span>
+            </div>
+            <Progress value={(recordingTime / MAX_RECORDING_TIME) * 100} />
+          </div>
+        )}
+
+        {recordedText && (
+          <div className='w-full max-w-md mt-4'>
+            <div className='bg-background rounded-lg border p-4'>
+              <p className='text-sm font-medium mb-2'>Recorded Text:</p>
+              <p className='text-sm'>{recordedText}</p>
+            </div>
+
             <div className='flex justify-center mt-4'>
               <Button
                 onClick={handleTranslate}
@@ -867,130 +653,95 @@ export default function VoiceTranslation({
           </div>
         )}
 
-        {isRecording && (
-          <div className='w-full max-w-md space-y-2'>
-            <div className='flex items-center justify-between text-sm'>
-              <span className='flex items-center text-muted-foreground'>
-                <Clock className='h-4 w-4 mr-1' />
-                {formatTime(recordingTime)}
-              </span>
-              <span className='text-muted-foreground'>Max: 4:00</span>
-            </div>
-            <Progress value={progressPercentage} className='h-2' />
-            <p className='text-xs text-center text-muted-foreground'>
-              {remainingTime <= 30 ? (
-                <span className='text-red-500 font-medium'>
-                  {remainingTime} seconds remaining
-                </span>
-              ) : (
-                <span>{formatTime(remainingTime)} remaining</span>
-              )}
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* Show recorded text UI only if we have text from speech recognition (not manual input) */}
-      {recordedText && !showManualInput && (
-        <div>
-          <div className='relative'>
-            <Textarea
-              value={finalProcessedText || recordedText}
-              readOnly
-              className={`min-h-[80px] ${
-                isProcessingLanguage ? 'opacity-70' : ''
-              }`}
-            />
-            {isProcessingLanguage && (
-              <div className='absolute inset-0 flex items-center justify-center bg-background/30'>
-                <Loader2 className='h-6 w-6 animate-spin text-primary' />
+        {/* Show manual input option for Android when needed */}
+        {isAndroid &&
+          !isRecording &&
+          !recordedText &&
+          sourceLanguage !== 'en' && (
+            <div className='w-full max-w-md mt-4'>
+              <div className='bg-muted rounded-lg p-4 text-center'>
+                <p className='text-sm mb-2'>
+                  Android has limited support for non-English speech
+                  recognition.
+                </p>
+                <p className='text-xs text-muted-foreground mb-3'>
+                  Try using the exact BCP-47 language code:{' '}
+                  {getLanguageCode(sourceLanguage)}
+                </p>
+                <Textarea
+                  value={recordedText}
+                  onChange={(e) => setRecordedText(e.target.value)}
+                  placeholder={`Type your text in ${
+                    getLanguageByCode(sourceLanguage)?.name || sourceLanguage
+                  }...`}
+                  className='min-h-[80px] mb-3'
+                />
+                <Button
+                  onClick={handleTranslate}
+                  disabled={!recordedText.trim() || isTranslating || isDisabled}
+                  className='w-full'
+                >
+                  Translate
+                </Button>
               </div>
-            )}
-          </div>
-
-          <div className='flex justify-center mt-4 space-x-2'>
-            <Button
-              onClick={handleTranslate}
-              disabled={
-                !recordedText.trim() ||
-                isTranslating ||
-                isDisabled ||
-                isProcessingLanguage
-              }
-              className='w-full sm:w-auto'
-            >
-              {isTranslating ? (
-                <>
-                  <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-                  Translating...
-                </>
-              ) : (
-                'Translate'
-              )}
-            </Button>
-
-            <Button
-              variant='outline'
-              onClick={detectTextLanguage}
-              disabled={
-                !recordedText.trim() ||
-                isDetectingLanguage ||
-                isProcessingLanguage
-              }
-              className='sm:w-auto'
-            >
-              {isDetectingLanguage ? (
-                <>
-                  <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-                  Detecting...
-                </>
-              ) : (
-                <>
-                  <Languages className='mr-2 h-4 w-4' />
-                  Detect Language
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {translatedText && (
-        <div className='space-y-2'>
-          <Textarea value={translatedText} readOnly className='min-h-[80px]' />
-
-          {/* Display Translation Note if available */}
-          {translationNote && (
-            <div className='mt-4 p-4 bg-muted rounded-md border border-muted-foreground/20'>
-              <div dangerouslySetInnerHTML={{ __html: translationNote }} />
             </div>
           )}
 
-          <div className='flex justify-center space-x-2'>
-            <Button
-              onClick={playTranslation}
-              disabled={isPlaying}
-              variant='outline'
-            >
-              {isPlaying ? (
-                <>
-                  <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-                  Playing...
-                </>
-              ) : (
-                <>
-                  <Play className='mr-2 h-4 w-4' />
-                  Play
-                </>
+        {translation && (
+          <div className='w-full max-w-md mt-4'>
+            <div className='bg-secondary rounded-lg p-4'>
+              <div className='flex justify-between items-center mb-2'>
+                <p className='text-sm font-medium'>Translation:</p>
+                <div className='flex items-center space-x-2'>
+                  <Button
+                    onClick={handleCopyTranslation}
+                    size='sm'
+                    variant='ghost'
+                    className='h-8 w-8 p-0'
+                  >
+                    <Copy className='h-4 w-4' />
+                    <span className='sr-only'>Copy translation</span>
+                  </Button>
+                  <Button
+                    onClick={handleTextToSpeech}
+                    size='sm'
+                    variant='ghost'
+                    className='h-8 w-8 p-0'
+                    disabled={isSpeaking}
+                  >
+                    {isSpeaking ? (
+                      <Loader2 className='h-4 w-4 animate-spin' />
+                    ) : (
+                      <VolumeIcon className='h-4 w-4' />
+                    )}
+                    <span className='sr-only'>
+                      {isSpeaking ? 'Speaking...' : 'Speak translation'}
+                    </span>
+                  </Button>
+                  <Button
+                    onClick={handleSave}
+                    size='sm'
+                    variant='ghost'
+                    className='h-8 w-8 p-0'
+                  >
+                    <Save className='h-4 w-4' />
+                    <span className='sr-only'>Save translation</span>
+                  </Button>
+                </div>
+              </div>
+              <p className='text-sm'>{translation}</p>
+
+              {/* Display translation note if available */}
+              {translationNote && (
+                <div className='mt-3 text-xs p-2 bg-muted/50 rounded border'>
+                  <p className='font-medium mb-1'>Translation note:</p>
+                  <p>{translationNote}</p>
+                </div>
               )}
-            </Button>
-            <Button onClick={handleSave} variant='outline'>
-              <Save className='mr-2 h-4 w-4' />
-              Save
-            </Button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
