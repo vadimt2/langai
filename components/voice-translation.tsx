@@ -11,6 +11,7 @@ import {
   Save,
   Clock,
   Languages,
+  InfoIcon,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useHistory } from '@/context/history-context';
@@ -22,6 +23,12 @@ import {
   detectLanguageMismatch,
   getFrancLanguageName,
 } from '@/utils/language-detect';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 interface VoiceTranslationProps {
   sourceLanguage: string;
@@ -53,7 +60,16 @@ export default function VoiceTranslation({
   const [recordingTime, setRecordingTime] = useState(0);
   const [translationNote, setTranslationNote] = useState<string | null>(null);
   const [showManualInput, setShowManualInput] = useState(false);
-  const [recognitionFailed, setRecognitionFailed] = useState(false);
+  const [detectedWrongLanguage, setDetectedWrongLanguage] = useState(false);
+  const [detectionDetails, setDetectionDetails] = useState<{
+    detectedLang: string;
+    confidence: number;
+    isReliable: boolean;
+  } | null>(null);
+  const [isDetectingLanguage, setIsDetectingLanguage] = useState(false);
+  const [finalProcessedText, setFinalProcessedText] = useState('');
+  const [isProcessingLanguage, setIsProcessingLanguage] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const { toast } = useToast();
   const { addToHistory } = useHistory();
   const recognitionRef = useRef<any>(null);
@@ -65,14 +81,7 @@ export default function VoiceTranslation({
     isDisabled,
   } = useRecaptchaContext();
   const [isAndroid, setIsAndroid] = useState(false);
-  const [detectedWrongLanguage, setDetectedWrongLanguage] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
-  const [detectionDetails, setDetectionDetails] = useState<{
-    detectedLang: string;
-    confidence: number;
-    isReliable: boolean;
-  } | null>(null);
-  const [isDetectingLanguage, setIsDetectingLanguage] = useState(false);
+  const [languageIndicator, setLanguageIndicator] = useState<string>('');
 
   // Detect Android specifically
   useEffect(() => {
@@ -81,19 +90,73 @@ export default function VoiceTranslation({
     }
   }, []);
 
-  // Initialize speech recognition
+  // More explicitly initialize speech recognition with correct language
   useEffect(() => {
+    let recognition: any = null;
+
     if (
       typeof window !== 'undefined' &&
       ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
     ) {
       const SpeechRecognition =
         window.SpeechRecognition || window.webkitSpeechRecognition;
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = true;
-      recognitionRef.current.interimResults = true;
 
-      recognitionRef.current.onresult = (event: any) => {
+      // Create a new recognition instance when language changes
+      recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+
+      // Add extended language code mapping with regional variants
+      const languageMapping: Record<string, string[]> = {
+        ru: ['ru-RU', 'ru'],
+        fr: ['fr-FR', 'fr-CA', 'fr'],
+        de: ['de-DE', 'de-AT', 'de'],
+        es: ['es-ES', 'es-MX', 'es'],
+        it: ['it-IT', 'it'],
+        zh: ['zh-CN', 'zh-TW', 'zh'],
+        ja: ['ja-JP', 'ja'],
+        ar: ['ar-SA', 'ar-EG', 'ar'],
+        hi: ['hi-IN', 'hi'],
+        pt: ['pt-BR', 'pt-PT', 'pt'],
+        en: ['en-US', 'en-GB', 'en-AU', 'en'],
+      };
+
+      // For Android, try several language codes to see which ones work best
+      if (isAndroid && languageMapping[sourceLanguage]) {
+        // Test which language code works best
+        const variants = languageMapping[sourceLanguage];
+        recognition.lang = variants[0]; // Start with first option
+
+        console.log('Setting Android language to:', recognition.lang);
+      } else {
+        recognition.lang = sourceLanguage;
+      }
+
+      // Add a debug function to log language detection
+      const logLanguageInfo = (text: string) => {
+        if (text.length < 20) return; // Skip short text
+
+        // Try to detect the actual language being used
+        try {
+          const detection = detectLanguageMismatch(text, sourceLanguage);
+
+          if (detection.isReliable) {
+            const detectedName = getFrancLanguageName(detection.detectedLang);
+            console.log(
+              `Detected language: ${detectedName} (${
+                detection.detectedLang
+              }), Confidence: ${(detection.confidence * 100).toFixed(0)}%`
+            );
+
+            // Update the language indicator
+            setLanguageIndicator(detectedName);
+          }
+        } catch (e) {
+          console.error('Language detection error:', e);
+        }
+      };
+
+      recognition.onresult = (event: any) => {
         let transcript = '';
         for (let i = 0; i < event.results.length; i++) {
           if (event.results[i].isFinal) {
@@ -103,41 +166,13 @@ export default function VoiceTranslation({
 
         const finalText = transcript.trim();
         setRecordedText(finalText);
+        setFinalProcessedText(finalText);
 
-        // Only check for language mismatch if not English source
-        if (sourceLanguage !== 'en' && finalText.length >= 10) {
-          // Use our enhanced language detection
-          const detection = detectLanguageMismatch(finalText, sourceLanguage);
-
-          // Save detection details for UI
-          setDetectionDetails({
-            detectedLang: detection.detectedLang,
-            confidence: detection.confidence,
-            isReliable: detection.isReliable,
-          });
-
-          if (detection.isMismatch && isAndroid) {
-            setDetectedWrongLanguage(true);
-
-            toast({
-              title: 'Language Mismatch Detected',
-              description: `Detected ${getFrancLanguageName(
-                detection.detectedLang
-              )} instead of ${
-                getLanguageByCode(sourceLanguage)?.name
-              }. Converting automatically...`,
-              duration: 5000,
-            });
-
-            // Auto-translate the misdetected text to the selected language
-            autoCorrectLanguage(finalText);
-          } else {
-            setDetectedWrongLanguage(false);
-          }
-        }
+        // Log language info for debugging
+        logLanguageInfo(finalText);
       };
 
-      recognitionRef.current.onerror = (event: any) => {
+      recognition.onerror = (event: any) => {
         console.error('Speech recognition error', event.error);
 
         // Show appropriate error messages
@@ -176,7 +211,6 @@ export default function VoiceTranslation({
           // Show manual input option for Android devices with non-English languages
           if (isAndroid && sourceLanguage !== 'en') {
             setShowManualInput(true);
-            setRecognitionFailed(true);
           }
         } else {
           toast({
@@ -188,35 +222,26 @@ export default function VoiceTranslation({
           // Show manual input option for Android devices with any error
           if (isAndroid && sourceLanguage !== 'en') {
             setShowManualInput(true);
-            setRecognitionFailed(true);
           }
         }
 
         setIsRecording(false);
         stopTimer();
       };
-    } else {
-      toast({
-        title: 'Not Supported',
-        description: 'Speech recognition is not supported in this browser.',
-        variant: 'destructive',
-      });
+
+      recognitionRef.current = recognition;
     }
 
     return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
+      if (recognition) {
+        try {
+          recognition.stop();
+        } catch (e) {
+          console.error('Error stopping recognition:', e);
+        }
       }
-      stopTimer();
     };
-  }, [toast, sourceLanguage, isAndroid]);
-
-  // Set language for speech recognition
-  useEffect(() => {
-    if (recognitionRef.current) {
-      recognitionRef.current.lang = sourceLanguage;
-    }
-  }, [sourceLanguage]);
+  }, [sourceLanguage, isAndroid, toast]); // Recreate recognition when language changes
 
   // Timer effect for recording time limit
   useEffect(() => {
@@ -257,60 +282,155 @@ export default function VoiceTranslation({
 
   const startRecording = () => {
     setRecordedText('');
+    setFinalProcessedText('');
     setShowManualInput(false);
-    setRecognitionFailed(false);
-    setDetectedWrongLanguage(false);
 
-    // Android-specific warning for non-English languages
+    // For Android with non-English, provide a clearer message
     if (sourceLanguage !== 'en' && isAndroid) {
       toast({
-        title: 'Android Recognition Limitation',
-        description: `Warning: Android may detect English even when speaking ${
-          getLanguageByCode(sourceLanguage)?.name
-        }. Manual input may be needed.`,
-        variant: 'destructive',
-        duration: 8000,
-      });
-    }
-    // General mobile warning
-    else if (sourceLanguage !== 'en' && isMobile) {
-      toast({
-        title: 'Mobile Speech Recognition Limitation',
+        title: `Recording in ${getLanguageByCode(sourceLanguage)?.name}`,
         description:
-          'Speech recognition on mobile devices works best with English. Other languages may have limited or no support.',
+          'Speak clearly and pause between sentences for better recognition.',
         variant: 'default',
-        duration: 5000,
-      });
-    }
-    // Desktop warning
-    else if (sourceLanguage !== 'en') {
-      toast({
-        title: 'Speech Recognition Limitation',
-        description:
-          'Note: Speech recognition works best with English. Your selected language may have limited support.',
-        variant: 'default',
-        duration: 5000,
+        duration: 4000,
       });
     }
 
     if (recognitionRef.current) {
-      recognitionRef.current.lang = sourceLanguage;
-      recognitionRef.current.start();
+      try {
+        // Ensure language is set correctly right before starting
+        recognitionRef.current.lang = sourceLanguage;
+
+        // Stop any existing recognition first to reset
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          // Ignore errors from stopping non-started recognition
+        }
+
+        // Small delay to ensure clean restart
+        setTimeout(() => {
+          recognitionRef.current.start();
+          setIsRecording(true);
+          startTimer();
+        }, 100);
+      } catch (error) {
+        console.error('Error starting recognition:', error);
+        toast({
+          title: 'Recognition Error',
+          description: 'Could not start speech recognition. Please try again.',
+          variant: 'destructive',
+        });
+      }
     }
-    setIsRecording(true);
-    startTimer();
   };
 
   const stopRecording = () => {
     if (recognitionRef.current) {
-      recognitionRef.current.stop();
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {
+        console.error('Error stopping recognition:', e);
+      }
     }
     setIsRecording(false);
     stopTimer();
   };
 
+  // New function to process speech immediately when recognized on Android
+  const processRecordedSpeech = async (text: string) => {
+    if (!text || text.length < 3) return;
+
+    // Use language detection to verify if text was transcribed in the wrong language
+    const detection = detectLanguageMismatch(text, sourceLanguage);
+
+    // Save detection details in state
+    setDetectionDetails({
+      detectedLang: detection.detectedLang,
+      confidence: detection.confidence,
+      isReliable: detection.isReliable,
+    });
+
+    // If it's a reliable detection of English instead of the selected language
+    if (
+      detection.isMismatch &&
+      detection.detectedLang === 'eng' &&
+      detection.confidence > 0.5
+    ) {
+      // Automatically translate to the selected language without user intervention
+      setIsProcessingLanguage(true);
+
+      try {
+        // Subtle toast to show what's happening (brief notification)
+        toast({
+          title: 'Converting to ' + getLanguageByCode(sourceLanguage)?.name,
+          description: 'Processing speech...',
+          duration: 2500,
+        });
+
+        const recaptchaToken = recaptchaLoaded
+          ? await getToken('translate')
+          : '';
+
+        const response = await fetch('/api/translate', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            text: text,
+            sourceLanguage: 'en', // The text was detected as English
+            targetLanguage: sourceLanguage, // Convert to the language user selected
+            model,
+            recaptchaToken,
+          }),
+        });
+
+        const responseText = await response.text();
+        let data;
+
+        try {
+          data = JSON.parse(responseText);
+        } catch (e) {
+          console.error('Failed to parse response as JSON:', e);
+          throw new Error(`Invalid JSON response`);
+        }
+
+        if (!response.ok || !data.translatedText) {
+          throw new Error(data.error || 'Translation failed');
+        }
+
+        // Update with the correctly transcribed text in the target language
+        setFinalProcessedText(data.translatedText);
+
+        // No toast here - we want this to be seamless
+      } catch (error) {
+        console.error('Auto-language processing error:', error);
+        // If conversion fails, just use the original text
+        setFinalProcessedText(text);
+
+        toast({
+          title: 'Speech processing issue',
+          description: 'Using original transcription instead',
+          variant: 'destructive',
+          duration: 3000,
+        });
+      } finally {
+        setIsProcessingLanguage(false);
+      }
+    } else {
+      // If the text is already in the correct language (or detection failed)
+      // just use the transcribed text as is
+      setFinalProcessedText(text);
+    }
+  };
+
+  // Update the handleTranslate method to use finalProcessedText
   const handleTranslate = async () => {
-    if (!recordedText.trim() || isTranslating) return;
+    // Use the processed text for translation instead of raw recorded text
+    const textToTranslate = finalProcessedText || recordedText;
+
+    if (!textToTranslate.trim() || isTranslating) return;
 
     setIsTranslating(true);
     setTranslationNote(null); // Clear previous notes
@@ -324,7 +444,7 @@ export default function VoiceTranslation({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          text: recordedText,
+          text: textToTranslate,
           sourceLanguage,
           targetLanguage,
           model,
@@ -435,75 +555,6 @@ export default function VoiceTranslation({
   // Calculate progress percentage
   const progressPercentage = (recordingTime / MAX_RECORDING_TIME) * 100;
 
-  // Add function to automatically translate misdetected English text to the selected language
-  const autoCorrectLanguage = async (englishText: string) => {
-    if (!englishText.trim() || sourceLanguage === 'en') return;
-
-    setIsTranscribing(true);
-    try {
-      // Show toast to inform user about auto-correction
-      toast({
-        title: 'Converting to correct language',
-        description: `Converting detected English to ${
-          getLanguageByCode(sourceLanguage)?.name
-        }...`,
-        duration: 3000,
-      });
-
-      const recaptchaToken = recaptchaLoaded ? await getToken('translate') : '';
-
-      const response = await fetch('/api/translate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          text: englishText,
-          sourceLanguage: 'en', // The text was detected as English
-          targetLanguage: sourceLanguage, // Convert to the language user selected
-          model,
-          recaptchaToken,
-        }),
-      });
-
-      const responseText = await response.text();
-      let data;
-
-      try {
-        data = JSON.parse(responseText);
-      } catch (e) {
-        console.error('Failed to parse response as JSON:', e);
-        throw new Error(`Invalid JSON response`);
-      }
-
-      if (!response.ok || !data.translatedText) {
-        throw new Error(data.error || 'Translation failed');
-      }
-
-      // Update the recorded text with the translated version
-      setRecordedText(data.translatedText);
-      setDetectedWrongLanguage(false);
-
-      toast({
-        title: 'Converted Successfully',
-        description: `Speech has been converted to ${
-          getLanguageByCode(sourceLanguage)?.name
-        }`,
-        variant: 'default',
-      });
-    } catch (error) {
-      console.error('Auto-correction error:', error);
-      toast({
-        title: 'Conversion Error',
-        description:
-          error instanceof Error ? error.message : 'Failed to convert language',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsTranscribing(false);
-    }
-  };
-
   // Add function to manually detect the language of the recorded text
   const detectTextLanguage = async () => {
     if (!recordedText || recordedText.length < 10) {
@@ -569,6 +620,13 @@ export default function VoiceTranslation({
     }
   };
 
+  // Add an effect to reset language indicator when source language changes
+  useEffect(() => {
+    setLanguageIndicator(
+      getLanguageByCode(sourceLanguage)?.name || sourceLanguage
+    );
+  }, [sourceLanguage]);
+
   return (
     <div className='space-y-4 mt-4'>
       <div className='flex flex-col items-center space-y-4'>
@@ -588,26 +646,91 @@ export default function VoiceTranslation({
           </span>
         </Button>
 
-        <p className='text-sm text-center'>
-          {isRecording
-            ? 'Recording... Speak now'
-            : 'Press the microphone button to start recording'}
-        </p>
+        {/* Language indicator with better guidance for Android */}
+        <div className='flex items-center space-x-1'>
+          <p className='text-sm text-center'>
+            {isRecording
+              ? `Recording... Speak now in ${
+                  getLanguageByCode(sourceLanguage)?.name
+                }`
+              : 'Press the microphone button to start recording'}
+          </p>
 
-        {/* Add current language badge while recording */}
-        {isRecording && (
-          <div className='px-2 py-1 bg-primary/10 rounded-full text-xs text-primary-foreground/90 inline-flex items-center space-x-1'>
-            <span>
-              Listening in:{' '}
-              {getLanguageByCode(sourceLanguage)?.name || sourceLanguage}
-            </span>
-            {sourceLanguage !== 'en' && isAndroid && (
-              <span className='text-amber-500 ml-1'>
-                (may default to English)
-              </span>
-            )}
+          {/* Information tooltip for Android users */}
+          {isAndroid && sourceLanguage !== 'en' && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <InfoIcon className='h-4 w-4 text-muted-foreground cursor-help' />
+                </TooltipTrigger>
+                <TooltipContent side='top' className='max-w-sm'>
+                  <p>For best results on Android:</p>
+                  <ul className='list-disc pl-4 text-xs mt-1'>
+                    <li>Speak clearly and directly into microphone</li>
+                    <li>Pause between phrases for better recognition</li>
+                    <li>Avoid background noise</li>
+                    <li>Use short, common phrases</li>
+                  </ul>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
+
+        {/* Display current detected language when recording */}
+        {isRecording && languageIndicator && (
+          <div className='px-2 py-1 bg-primary/10 rounded-full text-xs text-primary-foreground/90 flex items-center space-x-1'>
+            <span>Detected language: {languageIndicator}</span>
           </div>
         )}
+
+        {/* Add speech examples for Android users */}
+        {isAndroid &&
+          sourceLanguage !== 'en' &&
+          !isRecording &&
+          !recordedText && (
+            <div className='w-full max-w-md p-3 bg-muted rounded-md mt-2'>
+              <p className='text-sm font-medium'>
+                Try these phrases in {getLanguageByCode(sourceLanguage)?.name}:
+              </p>
+              <div className='mt-2 space-y-1 text-sm'>
+                {sourceLanguage === 'ru' && (
+                  <>
+                    <p>• "Добрый день" (Good afternoon)</p>
+                    <p>• "Как дела?" (How are you?)</p>
+                    <p>• "Спасибо большое" (Thank you very much)</p>
+                  </>
+                )}
+                {sourceLanguage === 'fr' && (
+                  <>
+                    <p>• "Bonjour" (Hello)</p>
+                    <p>• "Comment ça va?" (How are you?)</p>
+                    <p>• "Merci beaucoup" (Thank you very much)</p>
+                  </>
+                )}
+                {sourceLanguage === 'de' && (
+                  <>
+                    <p>• "Guten Tag" (Good day)</p>
+                    <p>• "Wie geht es dir?" (How are you?)</p>
+                    <p>• "Vielen Dank" (Thank you very much)</p>
+                  </>
+                )}
+                {sourceLanguage === 'es' && (
+                  <>
+                    <p>• "Buenos días" (Good morning)</p>
+                    <p>• "¿Cómo estás?" (How are you?)</p>
+                    <p>• "Muchas gracias" (Thank you very much)</p>
+                  </>
+                )}
+                {!['ru', 'fr', 'de', 'es'].includes(sourceLanguage) && (
+                  <p>
+                    Try speaking a simple greeting or question in{' '}
+                    {getLanguageByCode(sourceLanguage)?.name}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
 
         {/* Show manual input suggestion and button for Android users */}
         {isAndroid &&
@@ -636,7 +759,7 @@ export default function VoiceTranslation({
           <div className='w-full max-w-md p-3 bg-amber-50 border border-amber-200 rounded-md'>
             <p className='text-sm text-amber-700 text-center'>
               <strong>Language Mismatch:</strong>{' '}
-              {isTranscribing ? (
+              {isProcessingLanguage ? (
                 <>
                   Converting{' '}
                   {detectionDetails &&
@@ -676,7 +799,7 @@ export default function VoiceTranslation({
                   <Button
                     variant='outline'
                     size='sm'
-                    onClick={() => autoCorrectLanguage(recordedText)}
+                    onClick={() => processRecordedSpeech(recordedText)}
                     className='text-xs'
                   >
                     Try Auto-Convert
@@ -703,11 +826,8 @@ export default function VoiceTranslation({
           <div className='w-full max-w-md mt-4'>
             <div className='flex justify-between items-center mb-2'>
               <p className='text-sm'>
-                {recognitionFailed
-                  ? 'Speech recognition failed. Type your text:'
-                  : `Type your text in ${
-                      getLanguageByCode(sourceLanguage)?.name || sourceLanguage
-                    }:`}
+                Type your text in{' '}
+                {getLanguageByCode(sourceLanguage)?.name || sourceLanguage}:
               </p>
               <Button
                 variant='ghost'
@@ -773,12 +893,30 @@ export default function VoiceTranslation({
       {/* Show recorded text UI only if we have text from speech recognition (not manual input) */}
       {recordedText && !showManualInput && (
         <div>
-          <Textarea value={recordedText} readOnly className='min-h-[80px]' />
+          <div className='relative'>
+            <Textarea
+              value={finalProcessedText || recordedText}
+              readOnly
+              className={`min-h-[80px] ${
+                isProcessingLanguage ? 'opacity-70' : ''
+              }`}
+            />
+            {isProcessingLanguage && (
+              <div className='absolute inset-0 flex items-center justify-center bg-background/30'>
+                <Loader2 className='h-6 w-6 animate-spin text-primary' />
+              </div>
+            )}
+          </div>
 
           <div className='flex justify-center mt-4 space-x-2'>
             <Button
               onClick={handleTranslate}
-              disabled={!recordedText.trim() || isTranslating || isDisabled}
+              disabled={
+                !recordedText.trim() ||
+                isTranslating ||
+                isDisabled ||
+                isProcessingLanguage
+              }
               className='w-full sm:w-auto'
             >
               {isTranslating ? (
@@ -794,7 +932,11 @@ export default function VoiceTranslation({
             <Button
               variant='outline'
               onClick={detectTextLanguage}
-              disabled={!recordedText.trim() || isDetectingLanguage}
+              disabled={
+                !recordedText.trim() ||
+                isDetectingLanguage ||
+                isProcessingLanguage
+              }
               className='sm:w-auto'
             >
               {isDetectingLanguage ? (
