@@ -10,7 +10,7 @@ import {
   Wand2,
   ArrowRight,
   X,
-  Play,
+  Volume2,
   Share2,
   Mic,
   Languages,
@@ -729,7 +729,7 @@ export default function TextTranslation({
                   title='Listen to translation'
                   className='h-8 px-2 flex-grow sm:flex-grow-0'
                 >
-                  <Play className='h-4 w-4 mr-0 sm:mr-1' />
+                  <Volume2 className='h-4 w-4 mr-0 sm:mr-1' />
                   <span className='hidden sm:inline'>
                     {isPlaying ? 'Playing...' : 'Play'}
                   </span>
