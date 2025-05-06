@@ -40,6 +40,8 @@ export default function VoiceTranslation({
   const [isPlaying, setIsPlaying] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [translationNote, setTranslationNote] = useState<string | null>(null);
+  const [showManualInput, setShowManualInput] = useState(false);
+  const [recognitionFailed, setRecognitionFailed] = useState(false);
   const { toast } = useToast();
   const { addToHistory } = useHistory();
   const recognitionRef = useRef<any>(null);
@@ -50,6 +52,14 @@ export default function VoiceTranslation({
     isLoaded: recaptchaLoaded,
     isDisabled,
   } = useRecaptchaContext();
+  const [isAndroid, setIsAndroid] = useState(false);
+
+  // Detect Android specifically
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setIsAndroid(/Android/i.test(navigator.userAgent));
+    }
+  }, []);
 
   // Initialize speech recognition
   useEffect(() => {
@@ -108,12 +118,24 @@ export default function VoiceTranslation({
             }) is not supported by your browser's speech recognition.`,
             variant: 'destructive',
           });
+
+          // Show manual input option for Android devices with non-English languages
+          if (isAndroid && sourceLanguage !== 'en') {
+            setShowManualInput(true);
+            setRecognitionFailed(true);
+          }
         } else {
           toast({
             title: 'Recognition Error',
             description: `Error: ${event.error}. Please try again.`,
             variant: 'destructive',
           });
+
+          // Show manual input option for Android devices with any error
+          if (isAndroid && sourceLanguage !== 'en') {
+            setShowManualInput(true);
+            setRecognitionFailed(true);
+          }
         }
 
         setIsRecording(false);
@@ -181,21 +203,35 @@ export default function VoiceTranslation({
 
   const startRecording = () => {
     setRecordedText('');
+    setShowManualInput(false);
+    setRecognitionFailed(false);
 
-    // Mobile-specific warning for non-English languages
-    if (sourceLanguage !== 'en' && isMobile) {
+    // Android-specific warning for non-English languages
+    if (sourceLanguage !== 'en' && isAndroid) {
+      toast({
+        title: 'Android Speech Recognition Limitation',
+        description:
+          'Android browsers have very limited support for non-English speech recognition. Try using English or manually typing your text instead.',
+        variant: 'destructive',
+        duration: 8000,
+      });
+    }
+    // General mobile warning
+    else if (sourceLanguage !== 'en' && isMobile) {
       toast({
         title: 'Mobile Speech Recognition Limitation',
         description:
-          'Speech recognition on mobile devices works best with English. Other languages may have limited or no support depending on your device and browser.',
+          'Speech recognition on mobile devices works best with English. Other languages may have limited or no support.',
         variant: 'default',
         duration: 5000,
       });
-    } else if (sourceLanguage !== 'en') {
+    }
+    // Desktop warning
+    else if (sourceLanguage !== 'en') {
       toast({
         title: 'Speech Recognition Limitation',
         description:
-          'Note: Speech recognition works best with English. Your selected language may have limited support depending on your browser and device.',
+          'Note: Speech recognition works best with English. Your selected language may have limited support.',
         variant: 'default',
         duration: 5000,
       });
@@ -368,6 +404,77 @@ export default function VoiceTranslation({
             : 'Press the microphone button to start recording'}
         </p>
 
+        {/* Show manual input suggestion and button for Android users */}
+        {isAndroid &&
+          sourceLanguage !== 'en' &&
+          !isRecording &&
+          !showManualInput && (
+            <div className='text-center'>
+              <p className='text-xs text-amber-600 mt-1 mb-2'>
+                Android has limited support for{' '}
+                {getLanguageByCode(sourceLanguage)?.name || sourceLanguage}{' '}
+                speech recognition.
+              </p>
+              <Button
+                variant='outline'
+                size='sm'
+                onClick={() => setShowManualInput(true)}
+                className='text-xs'
+              >
+                Switch to manual text input
+              </Button>
+            </div>
+          )}
+
+        {/* Manual input option UI */}
+        {showManualInput && (
+          <div className='w-full max-w-md mt-4'>
+            <div className='flex justify-between items-center mb-2'>
+              <p className='text-sm'>
+                {recognitionFailed
+                  ? 'Speech recognition failed. Type your text:'
+                  : `Type your text in ${
+                      getLanguageByCode(sourceLanguage)?.name || sourceLanguage
+                    }:`}
+              </p>
+              <Button
+                variant='ghost'
+                size='sm'
+                onClick={() => setShowManualInput(false)}
+                className='text-xs'
+              >
+                Try voice again
+              </Button>
+            </div>
+            <Textarea
+              value={recordedText}
+              onChange={(e) => setRecordedText(e.target.value)}
+              placeholder={`Type your text in ${
+                getLanguageByCode(sourceLanguage)?.name || sourceLanguage
+              }...`}
+              className='min-h-[80px]'
+            />
+
+            {/* Translation button */}
+            <div className='flex justify-center mt-4'>
+              <Button
+                onClick={handleTranslate}
+                disabled={!recordedText.trim() || isTranslating || isDisabled}
+                className='w-full sm:w-auto'
+              >
+                {isTranslating ? (
+                  <>
+                    <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                    Translating...
+                  </>
+                ) : (
+                  'Translate'
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
+
         {isRecording && (
           <div className='w-full max-w-md space-y-2'>
             <div className='flex items-center justify-between text-sm'>
@@ -391,7 +498,8 @@ export default function VoiceTranslation({
         )}
       </div>
 
-      {recordedText && (
+      {/* Show recorded text UI only if we have text from speech recognition (not manual input) */}
+      {recordedText && !showManualInput && (
         <div>
           <Textarea value={recordedText} readOnly className='min-h-[80px]' />
 
