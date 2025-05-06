@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -13,6 +13,7 @@ import {
   Play,
   Share2,
   Mic,
+  Languages,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useHistory } from '@/context/history-context';
@@ -26,6 +27,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { useRouter } from 'next/navigation';
 
 // Type declarations for the Web Speech API
 interface SpeechRecognition extends EventTarget {
@@ -87,6 +89,149 @@ export default function TextTranslation({
     isLoaded: recaptchaLoaded,
     isDisabled,
   } = useRecaptchaContext();
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const router = useRouter();
+  const { pathname } = router;
+
+  // Initialize speech recognition
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const SpeechRecognitionAPI =
+        window.SpeechRecognition || window.webkitSpeechRecognition;
+
+      if (SpeechRecognitionAPI) {
+        const recognition = new SpeechRecognitionAPI();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+
+        recognition.onresult = (event: SpeechRecognitionEvent) => {
+          let transcript = '';
+          for (let i = 0; i < event.results.length; i++) {
+            if (event.results[i].isFinal) {
+              transcript += event.results[i][0].transcript + ' ';
+            }
+          }
+
+          const finalText = transcript.trim();
+          if (finalText) {
+            setInputText((prevText) =>
+              prevText ? `${prevText} ${finalText}` : finalText
+            );
+            // Detect language for longer inputs
+            if (finalText.length > 10) {
+              detectLanguage(finalText);
+            }
+          }
+        };
+
+        recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+          console.error('Speech recognition error:', event.error);
+          setIsListening(false);
+          toast({
+            title: 'Voice Recording Error',
+            description: `Error: ${event.error}. Please try again.`,
+            variant: 'destructive',
+          });
+        };
+
+        recognition.onend = () => {
+          setIsListening(false);
+        };
+
+        recognitionRef.current = recognition;
+      }
+    }
+
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          // Ignore errors on cleanup
+        }
+      }
+    };
+  }, [toast]);
+
+  // Get language code in BCP-47 format for speech recognition
+  const getLanguageCode = (langCode: string): string => {
+    // Direct mapping of language codes to BCP-47 format
+    const exactCodes: Record<string, string> = {
+      en: 'en-US', // English (US)
+      es: 'es-ES', // Spanish
+      fr: 'fr-FR', // French
+      de: 'de-DE', // German
+      it: 'it-IT', // Italian
+      pt: 'pt-BR', // Portuguese (Brazil)
+      ru: 'ru-RU', // Russian
+      zh: 'zh-CN', // Chinese (Simplified)
+      ja: 'ja-JP', // Japanese
+      ko: 'ko-KR', // Korean
+      ar: 'ar-SA', // Arabic
+      hi: 'hi-IN', // Hindi
+    };
+
+    return exactCodes[langCode] || langCode;
+  };
+
+  // Handle speech input with better language detection
+  const handleSpeechInput = () => {
+    if (isListening) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  };
+
+  // Start voice recording
+  const startRecording = () => {
+    if (!recognitionRef.current) {
+      toast({
+        title: 'Speech Recognition Unavailable',
+        description: 'Speech recognition is not supported in this browser.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      // Set the language for speech recognition
+      const exactLanguageCode = getLanguageCode(sourceLanguage);
+      recognitionRef.current.lang = exactLanguageCode;
+
+      // Show toast message
+      toast({
+        title: `Listening in ${
+          getLanguageByCode(sourceLanguage)?.name || sourceLanguage
+        }`,
+        description: 'Speak clearly for best results',
+        duration: 3000,
+      });
+
+      // Start recognition
+      recognitionRef.current.start();
+      setIsListening(true);
+    } catch (error) {
+      console.error('Error starting recognition:', error);
+      toast({
+        title: 'Recognition Error',
+        description: 'Could not start speech recognition. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Stop voice recording
+  const stopRecording = () => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {
+        console.error('Error stopping recognition:', e);
+      }
+    }
+    setIsListening(false);
+  };
 
   const handleTranslate = async () => {
     if (!inputText.trim()) return;
@@ -253,14 +398,17 @@ export default function TextTranslation({
     }
   };
 
-  const detectLanguage = async () => {
-    if (!inputText.trim()) return;
-
-    setIsDetecting(true);
-    // Clear previous detected language
-    setDetectedLanguage(null);
+  // Detect language function
+  const detectLanguage = async (text: string) => {
+    if (!text.trim()) return;
 
     try {
+      setIsDetecting(true);
+      // Clear previous detected language if it's a new detection from button click
+      if (text === inputText) {
+        setDetectedLanguage(null);
+      }
+
       // Get reCAPTCHA token
       let recaptchaToken = null;
       if (recaptchaLoaded) {
@@ -273,7 +421,7 @@ export default function TextTranslation({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          text: inputText,
+          text: text,
           recaptchaToken,
         }),
       });
@@ -307,16 +455,20 @@ export default function TextTranslation({
       }
 
       if (data.language && data.language !== sourceLanguage) {
-        const detectedLanguage = getLanguageByCode(data.language);
+        const detectedLang = getLanguageByCode(data.language);
         setDetectedLanguage(data.language);
 
-        toast({
-          title: 'Language Detected',
-          description: `Detected language: ${
-            detectedLanguage?.name || data.language
-          }`,
-        });
-      } else {
+        // Only show toast for manual detection, not for automatic detection during speech
+        if (text === inputText) {
+          toast({
+            title: 'Language Detected',
+            description: `Detected language: ${
+              detectedLang?.name || data.language
+            }`,
+          });
+        }
+      } else if (text === inputText) {
+        // Only show toast for manual detection
         toast({
           title: 'Language Confirmed',
           description: `Text appears to be in the selected source language`,
@@ -324,17 +476,25 @@ export default function TextTranslation({
       }
     } catch (error) {
       console.error('Language detection error:', error);
-      toast({
-        title: 'Detection Error',
-        description:
-          error instanceof Error
-            ? error.message
-            : 'Failed to detect language. Please try again.',
-        variant: 'destructive',
-      });
+      // Only show toast for manual detection
+      if (text === inputText) {
+        toast({
+          title: 'Detection Error',
+          description:
+            error instanceof Error
+              ? error.message
+              : 'Failed to detect language. Please try again.',
+          variant: 'destructive',
+        });
+      }
     } finally {
       setIsDetecting(false);
     }
+  };
+
+  // Manually detect language from button click
+  const handleDetectLanguage = () => {
+    detectLanguage(inputText);
   };
 
   const switchToDetectedLanguage = () => {
@@ -371,51 +531,6 @@ export default function TextTranslation({
     return `Original (${sourceLangName}):\n${inputText}\n\nTranslation (${targetLangName}):\n${translatedText}`;
   };
 
-  const handleSpeechInput = () => {
-    if (
-      !('webkitSpeechRecognition' in window) &&
-      !('SpeechRecognition' in window)
-    ) {
-      toast({
-        title: 'Speech Recognition Not Supported',
-        description: 'Your browser does not support speech recognition.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setIsListening(true);
-
-    const SpeechRecognitionAPI =
-      (window as any).SpeechRecognition ||
-      (window as any).webkitSpeechRecognition;
-    const recognition = new SpeechRecognitionAPI() as SpeechRecognition;
-    recognition.lang = sourceLanguage;
-    recognition.continuous = false;
-    recognition.interimResults = false;
-
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      const transcript = event.results[0][0].transcript;
-      setInputText((prev) => prev + (prev ? ' ' : '') + transcript);
-    };
-
-    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-      console.error('Speech recognition error', event.error);
-      setIsListening(false);
-      toast({
-        title: 'Speech Recognition Error',
-        description: `Error: ${event.error}`,
-        variant: 'destructive',
-      });
-    };
-
-    recognition.onend = () => {
-      setIsListening(false);
-    };
-
-    recognition.start();
-  };
-
   return (
     <div className='space-y-4 mt-4'>
       <div>
@@ -445,15 +560,15 @@ export default function TextTranslation({
                 <Button
                   variant='ghost'
                   size='sm'
-                  onClick={detectLanguage}
-                  disabled={isDetecting}
+                  onClick={handleDetectLanguage}
+                  disabled={isDetecting || isTranslating}
                   title='Detect language'
                   className='h-8 px-2 flex-grow sm:flex-grow-0'
                 >
                   {isDetecting ? (
                     <Loader2 className='h-4 w-4 mr-0 sm:mr-1 animate-spin' />
                   ) : (
-                    <Wand2 className='h-4 w-4 mr-0 sm:mr-1' />
+                    <Languages className='h-4 w-4 mr-0 sm:mr-1' />
                   )}
                   <span className='hidden sm:inline'>Detect Language</span>
                 </Button>
@@ -461,20 +576,78 @@ export default function TextTranslation({
             )}
           </div>
         </div>
-        <Textarea
-          placeholder='Enter text to translate (Ctrl+Enter to translate)'
-          value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
-          className='min-h-[120px]'
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-              e.preventDefault();
-              if (inputText.trim() && !isTranslating) {
-                handleTranslate();
-              }
-            }
-          }}
-        />
+        <div className='space-y-2'>
+          <div className='flex flex-col gap-2 relative'>
+            <div className='relative'>
+              <Textarea
+                placeholder={`Enter text in ${
+                  getLanguageByCode(sourceLanguage)?.name || sourceLanguage
+                }...`}
+                value={inputText}
+                onChange={(e) => {
+                  setInputText(e.target.value);
+                  // When text is entered manually, clear detected language
+                  if (detectedLanguage) {
+                    setDetectedLanguage(null);
+                  }
+                }}
+                className='min-h-[150px] pr-12'
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    if (inputText.trim() && !isTranslating) {
+                      handleTranslate();
+                    }
+                  }
+                }}
+              />
+              <div className='absolute right-3 top-3 flex flex-col gap-2'>
+                {inputText && (
+                  <Button
+                    variant='ghost'
+                    size='icon'
+                    onClick={handleClearInput}
+                    className='h-8 w-8 rounded-full bg-muted/50 hover:bg-muted'
+                    aria-label='Clear input'
+                  >
+                    <X className='h-4 w-4' />
+                  </Button>
+                )}
+
+                {/* Voice recording button in input field */}
+                <Button
+                  variant={isListening ? 'destructive' : 'ghost'}
+                  size='icon'
+                  onClick={handleSpeechInput}
+                  className={`h-8 w-8 rounded-full ${
+                    isListening
+                      ? 'bg-destructive hover:bg-destructive/90'
+                      : 'bg-muted/50 hover:bg-muted'
+                  }`}
+                  aria-label={
+                    isListening ? 'Stop recording' : 'Start voice recording'
+                  }
+                  title={isListening ? 'Stop recording' : 'Record speech'}
+                >
+                  {isListening ? (
+                    <Loader2 className='h-4 w-4 animate-spin' />
+                  ) : (
+                    <Mic className='h-4 w-4' />
+                  )}
+                </Button>
+
+                {detectedLanguage && sourceLanguage !== detectedLanguage && (
+                  <div
+                    className='ml-2 mt-1 text-xs text-blue-500 cursor-pointer flex items-center'
+                    onClick={switchToDetectedLanguage}
+                  >
+                    Switch to {getLanguageByCode(detectedLanguage)?.name}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {detectedLanguage &&
@@ -498,19 +671,6 @@ export default function TextTranslation({
         )}
 
       <div className='flex justify-center gap-2'>
-        <Button
-          onClick={handleSpeechInput}
-          disabled={isListening}
-          variant='outline'
-          className='w-10 flex-shrink-0'
-          title='Speech input'
-        >
-          {isListening ? (
-            <Loader2 className='h-4 w-4 animate-spin' />
-          ) : (
-            <Mic className='h-4 w-4' />
-          )}
-        </Button>
         <Button
           onClick={handleTranslate}
           disabled={!inputText.trim() || isTranslating}

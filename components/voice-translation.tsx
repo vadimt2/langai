@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   Mic,
   Square,
-  Play,
+  Volume2,
   Loader2,
   Save,
   Clock,
@@ -49,29 +49,89 @@ declare global {
   }
 }
 
+// Create async function for translation
+async function translateText({
+  text,
+  sourceLanguage,
+  targetLanguage,
+  model,
+}: {
+  text: string;
+  sourceLanguage: string;
+  targetLanguage: string;
+  model: string;
+}) {
+  if (!text.trim()) {
+    throw new Error('No text to translate');
+  }
+
+  // Create an AbortController to handle timeouts
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+  try {
+    const response = await fetch('/api/translate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text,
+        sourceLanguage,
+        targetLanguage,
+        model,
+      }),
+      signal: controller.signal, // Add the abort signal
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage;
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage =
+          errorJson.error || `HTTP error! status: ${response.status}`;
+      } catch (e) {
+        errorMessage = `HTTP error! status: ${response.status}`;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  } catch (error: unknown) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Translation request timed out. Please try again.');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId); // Clear the timeout
+  }
+}
+
 export default function VoiceTranslation({
   sourceLanguage,
   targetLanguage,
   model = 'gpt-3.5-turbo',
 }: VoiceTranslationProps) {
+  // Basic state variables
   const [isRecording, setIsRecording] = useState(false);
   const [recordedText, setRecordedText] = useState('');
-  const [translation, setTranslation] = useState('');
-  const [isTranslating, setIsTranslating] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isAndroid, setIsAndroid] = useState(false);
+
+  // Form state (simulating useFormState)
+  const [manualInputText, setManualInputText] = useState('');
+
+  // Translation state (simulating useActionState)
+  const [translation, setTranslation] = useState('');
   const [translationNote, setTranslationNote] = useState<string | null>(null);
-  const [showManualInput, setShowManualInput] = useState(false);
-  const [detectedWrongLanguage, setDetectedWrongLanguage] = useState(false);
-  const [detectionDetails, setDetectionDetails] = useState<{
-    detectedLang: string;
-    confidence: number;
-    isReliable: boolean;
-  } | null>(null);
-  const [isDetectingLanguage, setIsDetectingLanguage] = useState(false);
-  const [finalProcessedText, setFinalProcessedText] = useState('');
-  const [isProcessingLanguage, setIsProcessingLanguage] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [translationError, setTranslationError] = useState<Error | null>(null);
+
+  // UI state (simulating useOptimistic)
+  const [isProcessing, setIsProcessing] = useState(false);
+
   const { toast } = useToast();
   const { addToHistory } = useHistory();
   const recognitionRef = useRef<any>(null);
@@ -82,9 +142,7 @@ export default function VoiceTranslation({
     isLoaded: recaptchaLoaded,
     isDisabled,
   } = useRecaptchaContext();
-  const [isAndroid, setIsAndroid] = useState(false);
   const [languageIndicator, setLanguageIndicator] = useState<string>('');
-  const [isSpeaking, setIsSpeaking] = useState(false);
 
   // Detect Android specifically
   useEffect(() => {
@@ -95,33 +153,195 @@ export default function VoiceTranslation({
 
   // Implement exact language code mapping as suggested by ChatGPT
   const getLanguageCode = (langCode: string): string => {
-    // Direct mapping of language codes to BCP-47 format
+    // Direct mapping of language codes to BCP-47 format for all supported languages
     const exactCodes: Record<string, string> = {
-      ru: 'ru-RU', // Russian
+      // Common languages
+      en: 'en-US', // English (US)
       es: 'es-ES', // Spanish
       fr: 'fr-FR', // French
       de: 'de-DE', // German
       it: 'it-IT', // Italian
+      pt: 'pt-BR', // Portuguese (Brazil)
+      ru: 'ru-RU', // Russian
       zh: 'zh-CN', // Chinese (Simplified)
       ja: 'ja-JP', // Japanese
+      ko: 'ko-KR', // Korean
       ar: 'ar-SA', // Arabic
       hi: 'hi-IN', // Hindi
-      pt: 'pt-BR', // Portuguese
-      nl: 'nl-NL', // Dutch
-      ko: 'ko-KR', // Korean
-      tr: 'tr-TR', // Turkish
-      pl: 'pl-PL', // Polish
-      uk: 'uk-UA', // Ukrainian
-      he: 'he-IL', // Hebrew
-      el: 'el-GR', // Greek
+
+      // All other supported languages alphabetically
+      ab: 'ab', // Abkhaz (no specific regional code)
+      aa: 'aa', // Afar
+      af: 'af-ZA', // Afrikaans
+      ak: 'ak-GH', // Akan
+      sq: 'sq-AL', // Albanian
+      am: 'am-ET', // Amharic
+      an: 'an', // Aragonese
+      hy: 'hy-AM', // Armenian
+      as: 'as-IN', // Assamese
+      av: 'av', // Avaric
+      ae: 'ae', // Avestan
+      ay: 'ay-BO', // Aymara
+      az: 'az-AZ', // Azerbaijani
+      bm: 'bm-ML', // Bambara
+      ba: 'ba', // Bashkir
+      eu: 'eu-ES', // Basque
+      be: 'be-BY', // Belarusian
+      bn: 'bn-BD', // Bengali
+      bh: 'bh', // Bihari
+      bi: 'bi-VU', // Bislama
+      bs: 'bs-BA', // Bosnian
+      br: 'br-FR', // Breton
+      bg: 'bg-BG', // Bulgarian
+      my: 'my-MM', // Burmese
+      ca: 'ca-ES', // Catalan
+      ch: 'ch-GU', // Chamorro
+      ce: 'ce', // Chechen
+      ny: 'ny-MW', // Chichewa
+      cv: 'cv', // Chuvash
+      kw: 'kw-GB', // Cornish
+      co: 'co-FR', // Corsican
+      cr: 'cr-CA', // Cree
+      hr: 'hr-HR', // Croatian
       cs: 'cs-CZ', // Czech
-      hu: 'hu-HU', // Hungarian
-      sv: 'sv-SE', // Swedish
-      fi: 'fi-FI', // Finnish
       da: 'da-DK', // Danish
+      dv: 'dv-MV', // Divehi
+      nl: 'nl-NL', // Dutch
+      dz: 'dz-BT', // Dzongkha
+      eo: 'eo', // Esperanto
+      et: 'et-EE', // Estonian
+      ee: 'ee-GH', // Ewe
+      fo: 'fo-FO', // Faroese
+      fj: 'fj-FJ', // Fijian
+      fi: 'fi-FI', // Finnish
+      ff: 'ff', // Fula
+      gl: 'gl-ES', // Galician
+      ka: 'ka-GE', // Georgian
+      el: 'el-GR', // Greek
+      gn: 'gn-PY', // Guaraní
+      gu: 'gu-IN', // Gujarati
+      ht: 'ht-HT', // Haitian
+      ha: 'ha-NG', // Hausa
+      he: 'he-IL', // Hebrew
+      hz: 'hz', // Herero
+      ho: 'ho', // Hiri Motu
+      hu: 'hu-HU', // Hungarian
+      ia: 'ia', // Interlingua
+      id: 'id-ID', // Indonesian
+      ie: 'ie', // Interlingue
+      ga: 'ga-IE', // Irish
+      ig: 'ig-NG', // Igbo
+      ik: 'ik', // Inupiaq
+      io: 'io', // Ido
+      is: 'is-IS', // Icelandic
+      iu: 'iu-CA', // Inuktitut
+      jv: 'jv-ID', // Javanese
+      kl: 'kl-GL', // Kalaallisut
+      kn: 'kn-IN', // Kannada
+      kr: 'kr', // Kanuri
+      ks: 'ks-IN', // Kashmiri
+      kk: 'kk-KZ', // Kazakh
+      km: 'km-KH', // Khmer
+      ki: 'ki-KE', // Kikuyu
+      rw: 'rw-RW', // Kinyarwanda
+      ky: 'ky-KG', // Kyrgyz
+      kv: 'kv', // Komi
+      kg: 'kg-CD', // Kongo
+      ku: 'ku-IQ', // Kurdish
+      kj: 'kj', // Kwanyama
+      la: 'la-VA', // Latin
+      lb: 'lb-LU', // Luxembourgish
+      lg: 'lg-UG', // Luganda
+      li: 'li-NL', // Limburgish
+      ln: 'ln-CD', // Lingala
+      lo: 'lo-LA', // Lao
+      lt: 'lt-LT', // Lithuanian
+      lu: 'lu-CD', // Luba-Katanga
+      lv: 'lv-LV', // Latvian
+      gv: 'gv-IM', // Manx
+      mk: 'mk-MK', // Macedonian
+      mg: 'mg-MG', // Malagasy
+      ms: 'ms-MY', // Malay
+      ml: 'ml-IN', // Malayalam
+      mt: 'mt-MT', // Maltese
+      mi: 'mi-NZ', // Māori
+      mr: 'mr-IN', // Marathi
+      mh: 'mh-MH', // Marshallese
+      mn: 'mn-MN', // Mongolian
+      na: 'na-NR', // Nauru
+      nv: 'nv', // Navajo
+      nd: 'nd-ZW', // North Ndebele
+      ne: 'ne-NP', // Nepali
+      ng: 'ng', // Ndonga
+      nb: 'nb-NO', // Norwegian Bokmål
+      nn: 'nn-NO', // Norwegian Nynorsk
+      no: 'no-NO', // Norwegian
+      ii: 'ii-CN', // Nuosu
+      nr: 'nr-ZA', // South Ndebele
+      oc: 'oc-FR', // Occitan
+      oj: 'oj-CA', // Ojibwe
+      cu: 'cu', // Old Church Slavonic
+      om: 'om-ET', // Oromo
+      or: 'or-IN', // Oriya
+      os: 'os-GE', // Ossetian
+      pa: 'pa-IN', // Panjabi
+      pi: 'pi', // Pāli
+      fa: 'fa-IR', // Persian
+      pl: 'pl-PL', // Polish
+      ps: 'ps-AF', // Pashto
+      qu: 'qu-PE', // Quechua
+      rm: 'rm-CH', // Romansh
+      rn: 'rn-BI', // Kirundi
       ro: 'ro-RO', // Romanian
-      no: 'nb-NO', // Norwegian
-      en: 'en-US', // English (US)
+      sa: 'sa-IN', // Sanskrit
+      sc: 'sc-IT', // Sardinian
+      sd: 'sd-PK', // Sindhi
+      se: 'se-NO', // Northern Sami
+      sm: 'sm-WS', // Samoan
+      sg: 'sg-CF', // Sango
+      sr: 'sr-RS', // Serbian
+      gd: 'gd-GB', // Scottish Gaelic
+      sn: 'sn-ZW', // Shona
+      si: 'si-LK', // Sinhala
+      sk: 'sk-SK', // Slovak
+      sl: 'sl-SI', // Slovene
+      so: 'so-SO', // Somali
+      st: 'st-ZA', // Southern Sotho
+      su: 'su-ID', // Sundanese
+      sw: 'sw-TZ', // Swahili
+      ss: 'ss-SZ', // Swati
+      sv: 'sv-SE', // Swedish
+      ta: 'ta-IN', // Tamil
+      te: 'te-IN', // Telugu
+      tg: 'tg-TJ', // Tajik
+      th: 'th-TH', // Thai
+      ti: 'ti-ER', // Tigrinya
+      bo: 'bo-CN', // Tibetan
+      tk: 'tk-TM', // Turkmen
+      tl: 'tl-PH', // Tagalog
+      tn: 'tn-BW', // Tswana
+      to: 'to-TO', // Tonga
+      tr: 'tr-TR', // Turkish
+      ts: 'ts-ZA', // Tsonga
+      tt: 'tt-RU', // Tatar
+      tw: 'tw-GH', // Twi
+      ty: 'ty-PF', // Tahitian
+      ug: 'ug-CN', // Uighur
+      uk: 'uk-UA', // Ukrainian
+      ur: 'ur-PK', // Urdu
+      uz: 'uz-UZ', // Uzbek
+      ve: 've-ZA', // Venda
+      vi: 'vi-VN', // Vietnamese
+      vo: 'vo', // Volapük
+      wa: 'wa-BE', // Walloon
+      cy: 'cy-GB', // Welsh
+      wo: 'wo-SN', // Wolof
+      fy: 'fy-NL', // Western Frisian
+      xh: 'xh-ZA', // Xhosa
+      yi: 'yi', // Yiddish
+      yo: 'yo-NG', // Yoruba
+      za: 'za-CN', // Zhuang
+      zu: 'zu-ZA', // Zulu
     };
 
     return exactCodes[langCode] || langCode;
@@ -161,7 +381,6 @@ export default function VoiceTranslation({
 
         const finalText = transcript.trim();
         setRecordedText(finalText);
-        setFinalProcessedText(finalText);
       };
 
       recognition.onerror = (event: any) => {
@@ -194,11 +413,13 @@ export default function VoiceTranslation({
     };
   }, [sourceLanguage, toast]);
 
-  // Simplify the start recording function
+  // Simplified recording function with best practices
   const startRecording = () => {
     setRecordedText('');
-    setFinalProcessedText('');
-    setShowManualInput(false);
+    setTranslation('');
+    setTranslationNote(null);
+    setTranslationError(null);
+    setIsProcessing(false);
 
     if (!recognitionRef.current) {
       toast({
@@ -216,7 +437,9 @@ export default function VoiceTranslation({
 
       // Show which language we're using
       toast({
-        title: `Listening in ${getLanguageByCode(sourceLanguage)?.name}`,
+        title: `Listening in ${
+          getLanguageByCode(sourceLanguage)?.name || sourceLanguage
+        }`,
         description: isAndroid
           ? `Using language code: ${exactLanguageCode}`
           : 'Speak clearly for best results',
@@ -286,266 +509,123 @@ export default function VoiceTranslation({
     stopTimer();
   };
 
-  // New function to process speech immediately when recognized on Android
-  const processRecordedSpeech = async (text: string) => {
-    if (!text || text.length < 3) return;
-
-    // Use language detection to verify if text was transcribed in the wrong language
-    const detection = detectLanguageMismatch(text, sourceLanguage);
-
-    // Save detection details in state
-    setDetectionDetails({
-      detectedLang: detection.detectedLang,
-      confidence: detection.confidence,
-      isReliable: detection.isReliable,
-    });
-
-    // If it's a reliable detection of English instead of the selected language
-    if (
-      detection.isMismatch &&
-      detection.detectedLang === 'eng' &&
-      detection.confidence > 0.5
-    ) {
-      // Automatically translate to the selected language without user intervention
-      setIsProcessingLanguage(true);
-
-      try {
-        // Subtle toast to show what's happening (brief notification)
-        toast({
-          title: 'Converting to ' + getLanguageByCode(sourceLanguage)?.name,
-          description: 'Processing speech...',
-          duration: 2500,
-        });
-
-        const recaptchaToken = recaptchaLoaded
-          ? await getToken('translate')
-          : '';
-
-        const response = await fetch('/api/translate', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            text: text,
-            sourceLanguage: 'en', // The text was detected as English
-            targetLanguage: sourceLanguage, // Convert to the language user selected
-            model,
-            recaptchaToken,
-          }),
-        });
-
-        const responseText = await response.text();
-        let data;
-
-        try {
-          data = JSON.parse(responseText);
-        } catch (e) {
-          console.error('Failed to parse response as JSON:', e);
-          throw new Error(`Invalid JSON response`);
-        }
-
-        if (!response.ok || !data.translatedText) {
-          throw new Error(data.error || 'Translation failed');
-        }
-
-        // Update with the correctly transcribed text in the target language
-        setFinalProcessedText(data.translatedText);
-
-        // No toast here - we want this to be seamless
-      } catch (error) {
-        console.error('Auto-language processing error:', error);
-        // If conversion fails, just use the original text
-        setFinalProcessedText(text);
-
-        toast({
-          title: 'Speech processing issue',
-          description: 'Using original transcription instead',
-          variant: 'destructive',
-          duration: 3000,
-        });
-      } finally {
-        setIsProcessingLanguage(false);
-      }
-    } else {
-      // If the text is already in the correct language (or detection failed)
-      // just use the transcribed text as is
-      setFinalProcessedText(text);
-    }
-  };
-
-  // Update the handleTranslate method to use finalProcessedText
-  const handleTranslate = () => {
+  // Improved translation function with better error handling
+  const handleTranslate = async () => {
     if (!recordedText.trim() || isTranslating || isDisabled) return;
 
+    // Clear previous values and show loading state
     setTranslation('');
-    setTranslationNote('');
+    setTranslationNote(null);
+    setTranslationError(null);
     setIsTranslating(true);
+    setIsProcessing(true);
 
-    fetch('/api/translate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    // User feedback about what's happening
+    toast({
+      title: 'Processing Translation',
+      description: `Translating from ${
+        getLanguageByCode(sourceLanguage)?.name || sourceLanguage
+      } to ${getLanguageByCode(targetLanguage)?.name || targetLanguage}`,
+      duration: 3000,
+    });
+
+    try {
+      // Use the async function to handle translation
+      const result = await translateText({
         text: recordedText,
         sourceLanguage,
         targetLanguage,
         model,
-      }),
-    })
-      .then((res) => {
-        if (!res.ok) {
-          throw new Error(`HTTP error! status: ${res.status}`);
-        }
-        return res.json();
-      })
-      .then((data) => {
-        setTranslation(data.translatedText);
-
-        // Set translation note if available
-        if (data.translationNote) {
-          setTranslationNote(data.translationNote);
-        }
-      })
-      .catch((error) => {
-        console.error('Translation error:', error);
-        toast({
-          title: 'Translation Error',
-          description: 'Failed to translate. Please try again.',
-          variant: 'destructive',
-        });
-      })
-      .finally(() => {
-        setIsTranslating(false);
-      });
-  };
-
-  const playTranslation = () => {
-    if (!translation || isPlaying) return;
-
-    setIsPlaying(true);
-
-    const utterance = new SpeechSynthesisUtterance(translation);
-    utterance.lang = targetLanguage;
-
-    utterance.onend = () => {
-      setIsPlaying(false);
-    };
-
-    utterance.onerror = () => {
-      setIsPlaying(false);
-      toast({
-        title: 'Playback Error',
-        description: 'Failed to play translation. Please try again.',
-        variant: 'destructive',
-      });
-    };
-
-    window.speechSynthesis.speak(utterance);
-  };
-
-  const handleSave = () => {
-    if (recordedText && translation) {
-      addToHistory({
-        sourceLanguage,
-        targetLanguage,
-        sourceText: recordedText,
-        translatedText: translation,
-        timestamp: new Date().toISOString(),
-        mode: 'voice',
       });
 
-      toast({
-        title: 'Saved',
-        description: 'Voice translation saved to history',
-      });
-    }
-  };
+      setTranslation(result.translatedText);
 
-  // Format time as MM:SS
-  const formatTime = (seconds: number) => {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-  };
-
-  // Calculate remaining time
-  const remainingTime = MAX_RECORDING_TIME - recordingTime;
-  // Calculate progress percentage
-  const progressPercentage = (recordingTime / MAX_RECORDING_TIME) * 100;
-
-  // Add function to manually detect the language of the recorded text
-  const detectTextLanguage = async () => {
-    if (!recordedText || recordedText.length < 10) {
-      toast({
-        title: 'Text Too Short',
-        description:
-          'Please provide at least 10 characters for reliable detection.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setIsDetectingLanguage(true);
-
-    try {
-      const detection = detectLanguageMismatch(recordedText, sourceLanguage);
-
-      setDetectionDetails({
-        detectedLang: detection.detectedLang,
-        confidence: detection.confidence,
-        isReliable: detection.isReliable,
-      });
-
-      if (detection.detectedLang !== 'und') {
-        toast({
-          title: 'Language Detected',
-          description: `Detected language: ${getFrancLanguageName(
-            detection.detectedLang
-          )} (${(detection.confidence * 100).toFixed(0)}% confidence)`,
-          duration: 4000,
-        });
-
-        // If the detected language doesn't match the source language
-        if (detection.isMismatch && sourceLanguage !== 'en') {
-          setDetectedWrongLanguage(true);
-
-          // Ask if user wants to convert
-          toast({
-            title: 'Convert Text?',
-            description: `Would you like to convert from ${getFrancLanguageName(
-              detection.detectedLang
-            )} to ${getLanguageByCode(sourceLanguage)?.name}?`,
-            duration: 8000,
-          });
-        }
-      } else {
-        toast({
-          title: 'Detection Failed',
-          description:
-            'Could not reliably detect the language. Try with more text.',
-          variant: 'destructive',
-        });
+      // Set translation note if available
+      if (result.translationNote) {
+        setTranslationNote(result.translationNote);
       }
     } catch (error) {
-      console.error('Language detection error:', error);
+      console.error('Translation error:', error);
+      setTranslationError(
+        error instanceof Error ? error : new Error('Unknown error')
+      );
+
       toast({
-        title: 'Detection Error',
-        description: 'An error occurred while detecting the language.',
+        title: 'Translation Error',
+        description:
+          error instanceof Error
+            ? error.message
+            : 'Failed to translate. Please try again.',
         variant: 'destructive',
       });
     } finally {
-      setIsDetectingLanguage(false);
+      setIsTranslating(false);
+      setIsProcessing(false);
     }
   };
 
-  // Add an effect to reset language indicator when source language changes
-  useEffect(() => {
-    setLanguageIndicator(
-      getLanguageByCode(sourceLanguage)?.name || sourceLanguage
-    );
-  }, [sourceLanguage]);
+  // For manual input submission
+  const handleManualInputChange = (
+    e: React.ChangeEvent<HTMLTextAreaElement>
+  ) => {
+    setManualInputText(e.target.value);
+  };
+
+  const handleManualSubmit = async () => {
+    if (!manualInputText.trim() || isTranslating || isDisabled) return;
+
+    setRecordedText(manualInputText);
+    setIsProcessing(true);
+
+    // Use the same translation function
+    setTranslation('');
+    setTranslationNote(null);
+    setTranslationError(null);
+    setIsTranslating(true);
+
+    // User feedback about what's happening
+    toast({
+      title: 'Processing Translation',
+      description: `Translating from ${
+        getLanguageByCode(sourceLanguage)?.name || sourceLanguage
+      } to ${getLanguageByCode(targetLanguage)?.name || targetLanguage}`,
+      duration: 3000,
+    });
+
+    try {
+      // Use the async function to handle translation
+      const result = await translateText({
+        text: manualInputText,
+        sourceLanguage,
+        targetLanguage,
+        model,
+      });
+
+      setTranslation(result.translatedText);
+
+      // Set translation note if available
+      if (result.translationNote) {
+        setTranslationNote(result.translationNote);
+      }
+    } catch (error) {
+      console.error('Translation error:', error);
+      setTranslationError(
+        error instanceof Error ? error : new Error('Unknown error')
+      );
+
+      toast({
+        title: 'Translation Error',
+        description:
+          error instanceof Error
+            ? error.message
+            : 'Failed to translate. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsTranslating(false);
+      setIsProcessing(false);
+    }
+  };
 
   const handleCopyTranslation = () => {
     if (translation) {
@@ -581,6 +661,32 @@ export default function VoiceTranslation({
     window.speechSynthesis.speak(utterance);
   };
 
+  const handleSave = () => {
+    if (recordedText && translation) {
+      addToHistory({
+        sourceLanguage,
+        targetLanguage,
+        sourceText: recordedText,
+        translatedText: translation,
+        timestamp: new Date().toISOString(),
+        mode: 'voice',
+      });
+
+      toast({
+        title: 'Saved',
+        description: 'Voice translation saved to history',
+      });
+    }
+  };
+
+  // Format time as MM:SS
+  const formatTime = (seconds: number) => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  };
+
+  // Updated render method with modern UI patterns
   return (
     <div className='space-y-4 mt-4'>
       <div className='flex flex-col items-center space-y-4'>
@@ -669,16 +775,18 @@ export default function VoiceTranslation({
                   {getLanguageCode(sourceLanguage)}
                 </p>
                 <Textarea
-                  value={recordedText}
-                  onChange={(e) => setRecordedText(e.target.value)}
+                  value={manualInputText}
+                  onChange={handleManualInputChange}
                   placeholder={`Type your text in ${
                     getLanguageByCode(sourceLanguage)?.name || sourceLanguage
                   }...`}
                   className='min-h-[80px] mb-3'
                 />
                 <Button
-                  onClick={handleTranslate}
-                  disabled={!recordedText.trim() || isTranslating || isDisabled}
+                  onClick={handleManualSubmit}
+                  disabled={
+                    !manualInputText.trim() || isTranslating || isDisabled
+                  }
                   className='w-full'
                 >
                   Translate
@@ -712,7 +820,7 @@ export default function VoiceTranslation({
                     {isSpeaking ? (
                       <Loader2 className='h-4 w-4 animate-spin' />
                     ) : (
-                      <VolumeIcon className='h-4 w-4' />
+                      <Volume2 className='h-4 w-4' />
                     )}
                     <span className='sr-only'>
                       {isSpeaking ? 'Speaking...' : 'Speak translation'}
@@ -741,6 +849,29 @@ export default function VoiceTranslation({
             </div>
           </div>
         )}
+
+        {/* Show error message if translation fails */}
+        {translationError && (
+          <div className='w-full max-w-md mt-4'>
+            <div className='bg-destructive/10 rounded-lg p-4 text-destructive'>
+              <p className='font-medium'>Translation Error</p>
+              <p className='text-sm mt-1'>{translationError.message}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Show loading indicator while processing */}
+        {isProcessing &&
+          !isTranslating &&
+          !translation &&
+          !translationError && (
+            <div className='w-full max-w-md mt-4 flex justify-center'>
+              <div className='flex items-center space-x-2'>
+                <Loader2 className='h-6 w-6 animate-spin text-primary' />
+                <p className='text-sm'>Processing language...</p>
+              </div>
+            </div>
+          )}
       </div>
     </div>
   );
