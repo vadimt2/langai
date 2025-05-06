@@ -258,11 +258,14 @@ export default function VoiceTranslation({
   const handleStartRecording = () => {
     console.log('Starting recording...');
 
-    // Clear previous state
-    setRecordedText('');
-    setTranslation('');
-    setTranslationNote(null);
-    setTranslationError(null);
+    // Only clear previous state if we're starting a completely new recording
+    // (not restarting during an Android session)
+    if (!isRecording) {
+      setRecordedText('');
+      setTranslation('');
+      setTranslationNote(null);
+      setTranslationError(null);
+    }
 
     // Clean up any existing recognition
     if (recognitionRef.current) {
@@ -291,8 +294,16 @@ export default function VoiceTranslation({
       const recognition = new SpeechRecognition();
 
       // Basic configuration
-      recognition.continuous = !isAndroid;
-      recognition.interimResults = !isAndroid;
+      if (isAndroid) {
+        // On Android, use settings optimized for continuous recording
+        recognition.continuous = false; // Android works better with this off
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
+      } else {
+        recognition.continuous = true;
+        recognition.interimResults = true;
+      }
+
       recognition.lang = getLanguageCode(sourceLanguage);
 
       // Set up event handlers
@@ -312,12 +323,13 @@ export default function VoiceTranslation({
         }
 
         if (transcript.trim()) {
+          // Always accumulate text on mobile devices, regardless of platform
           setRecordedText((prev) => {
-            if (isAndroid) {
-              return prev ? prev + ' ' + transcript.trim() : transcript.trim();
-            } else {
-              return transcript.trim();
-            }
+            const newText = prev
+              ? prev + ' ' + transcript.trim()
+              : transcript.trim();
+            console.log('Accumulated text:', newText);
+            return newText;
           });
         }
       };
@@ -337,19 +349,35 @@ export default function VoiceTranslation({
         console.log('Recognition ended');
 
         if (isAndroid && isRecording) {
-          // On Android, try to restart if we're still supposed to be recording
-          try {
-            recognition.start();
-            setIsActivelyListening(true);
-          } catch (e) {
-            console.error('Failed to restart recognition:', e);
-            // If restart fails, stop recording
-            setIsRecording(false);
-            setIsActivelyListening(false);
-            stopTimer();
-          }
+          // On Android, preserve text and restart recognition immediately
+          console.log('Android recognition ended, attempting restart...');
+          setIsActivelyListening(false);
+
+          // Use a short timeout before restarting to give the API time to reset
+          setTimeout(() => {
+            if (!isRecording) return; // Make sure we're still recording
+
+            try {
+              recognition.start();
+              console.log('Android recognition restarted successfully');
+              setIsActivelyListening(true);
+            } catch (e) {
+              console.error('Failed to restart recognition on Android:', e);
+              // If restart fails, stop recording but KEEP the accumulated text
+              setIsRecording(false);
+              setIsActivelyListening(false);
+              stopTimer();
+
+              toast({
+                title: 'Recognition Ended',
+                description:
+                  'Speech recognition stopped. Your text has been preserved.',
+                variant: 'default',
+              });
+            }
+          }, 300);
         } else {
-          // On other platforms, just end recording
+          // On desktop platforms, just end recording but don't clear text
           setIsRecording(false);
           setIsActivelyListening(false);
           stopTimer();
@@ -362,9 +390,13 @@ export default function VoiceTranslation({
 
       toast({
         title: 'Listening',
-        description: `Recording in ${
-          getLanguageByCode(sourceLanguage)?.name || sourceLanguage
-        }`,
+        description: isAndroid
+          ? `Recording in ${
+              getLanguageByCode(sourceLanguage)?.name || sourceLanguage
+            }. Speak, pause, and continue as needed.`
+          : `Recording in ${
+              getLanguageByCode(sourceLanguage)?.name || sourceLanguage
+            }`,
         duration: 3000,
       });
     } catch (error) {
