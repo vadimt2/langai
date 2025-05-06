@@ -330,24 +330,12 @@ export default function VoiceTranslation({
       uk: 'uk-UA', // Ukrainian
       ur: 'ur-PK', // Urdu
       uz: 'uz-UZ', // Uzbek
-      ve: 've-ZA', // Venda
-      vi: 'vi-VN', // Vietnamese
-      vo: 'vo', // Volapük
-      wa: 'wa-BE', // Walloon
-      cy: 'cy-GB', // Welsh
-      wo: 'wo-SN', // Wolof
-      fy: 'fy-NL', // Western Frisian
-      xh: 'xh-ZA', // Xhosa
-      yi: 'yi', // Yiddish
-      yo: 'yo-NG', // Yoruba
-      za: 'za-CN', // Zhuang
-      zu: 'zu-ZA', // Zulu
     };
 
     return exactCodes[langCode] || langCode;
   };
 
-  // Initialize speech recognition with correct language code
+  // Improve the Android speech recognition implementation
   useEffect(() => {
     if (
       typeof window !== 'undefined' &&
@@ -359,9 +347,15 @@ export default function VoiceTranslation({
       // Create new instance to ensure clean state
       const recognition = new SpeechRecognition();
 
-      // Configure the recognition object
-      recognition.continuous = true;
-      recognition.interimResults = true;
+      // Configure the recognition object - different settings for Android
+      if (isAndroid) {
+        recognition.continuous = false; // Use single results for Android (more reliable)
+        recognition.interimResults = false; // No interim results on Android
+        recognition.maxAlternatives = 1;
+      } else {
+        recognition.continuous = true;
+        recognition.interimResults = true;
+      }
 
       // Set the exact BCP-47 language code (critical for Android)
       const exactLanguageCode = getLanguageCode(sourceLanguage);
@@ -373,28 +367,104 @@ export default function VoiceTranslation({
 
       recognition.onresult = (event: any) => {
         let transcript = '';
-        for (let i = 0; i < event.results.length; i++) {
+        const resultIndex = event.resultIndex || 0;
+
+        for (let i = resultIndex; i < event.results.length; i++) {
           if (event.results[i].isFinal) {
             transcript += event.results[i][0].transcript + ' ';
           }
         }
 
         const finalText = transcript.trim();
-        setRecordedText(finalText);
+
+        // For Android, accumulate text instead of replacing
+        if (finalText) {
+          if (isAndroid) {
+            setRecordedText((prev) => {
+              if (!prev) return finalText;
+              return prev + ' ' + finalText;
+            });
+
+            // For Android, restart recognition to continue
+            try {
+              if (isRecording) {
+                recognition.stop();
+                setTimeout(() => {
+                  if (isRecording) {
+                    recognition.start();
+                  }
+                }, 300);
+              }
+            } catch (e) {
+              console.error('Error restarting Android recognition:', e);
+            }
+          } else {
+            // Non-Android behavior
+            setRecordedText(finalText);
+          }
+        }
+
+        // Show processing UI for immediate feedback
+        if (finalText.length > 0) {
+          setIsProcessing(false); // Keep UI clean
+        }
       };
 
       recognition.onerror = (event: any) => {
         console.error('Speech recognition error:', event.error);
 
-        // Show error message
-        toast({
-          title: 'Recognition Error',
-          description: `Error: ${event.error}. Please try again.`,
-          variant: 'destructive',
-        });
+        // Don't show Android "no-speech" errors as we restart automatically
+        if (!(isAndroid && event.error === 'no-speech')) {
+          // Show error message
+          toast({
+            title: 'Recognition Error',
+            description: `Error: ${event.error}. Please try again.`,
+            variant: 'destructive',
+          });
+        }
 
-        setIsRecording(false);
-        stopTimer();
+        // For Android, try to restart on certain recoverable errors
+        if (
+          isAndroid &&
+          isRecording &&
+          ['network', 'aborted'].includes(event.error)
+        ) {
+          try {
+            setTimeout(() => {
+              if (isRecording) {
+                recognition.start();
+              }
+            }, 300);
+          } catch (e) {
+            console.error('Failed to restart recognition after error');
+            setIsRecording(false);
+            stopTimer();
+          }
+        } else {
+          setIsRecording(false);
+          stopTimer();
+        }
+      };
+
+      recognition.onend = () => {
+        // On Android, if still recording, restart recognition for continuous experience
+        if (isAndroid && isRecording) {
+          try {
+            setTimeout(() => {
+              if (isRecording) {
+                recognition.start();
+              }
+            }, 300);
+          } catch (e) {
+            console.error('Error restarting recognition:', e);
+            setIsRecording(false);
+            stopTimer();
+          }
+        } else if (!isAndroid) {
+          // Standard behavior for desktop
+          setIsRecording(false);
+          stopTimer();
+        }
       };
 
       // Store recognition object in ref
@@ -411,10 +481,11 @@ export default function VoiceTranslation({
         }
       }
     };
-  }, [sourceLanguage, toast]);
+  }, [sourceLanguage, isAndroid, isRecording, toast]);
 
   // Simplified recording function with best practices
   const startRecording = () => {
+    // Clear previous data
     setRecordedText('');
     setTranslation('');
     setTranslationNote(null);
@@ -435,16 +506,33 @@ export default function VoiceTranslation({
       const exactLanguageCode = getLanguageCode(sourceLanguage);
       recognitionRef.current.lang = exactLanguageCode;
 
-      // Show which language we're using
+      // Show which language we're using with platform-specific instructions
       toast({
         title: `Listening in ${
           getLanguageByCode(sourceLanguage)?.name || sourceLanguage
         }`,
         description: isAndroid
-          ? `Using language code: ${exactLanguageCode}`
+          ? `Speak in short phrases for better results. Using language code: ${exactLanguageCode}`
           : 'Speak clearly for best results',
         duration: 3000,
       });
+
+      // For Android devices, provide language examples to help with recognition
+      if (isAndroid) {
+        // Show example phrases for the selected language to help user
+        const examplePhrases = getExamplePhrases(sourceLanguage);
+        if (examplePhrases) {
+          setTimeout(() => {
+            if (isRecording) {
+              toast({
+                title: 'Tip: Try these example phrases',
+                description: examplePhrases,
+                duration: 5000,
+              });
+            }
+          }, 3500);
+        }
+      }
 
       // Start recognition
       recognitionRef.current.start();
@@ -458,6 +546,28 @@ export default function VoiceTranslation({
         variant: 'destructive',
       });
     }
+  };
+
+  // Helper function to provide language-specific example phrases
+  const getExamplePhrases = (langCode: string): string => {
+    const examples: Record<string, string> = {
+      en: "Try saying: 'Hello, how are you?' or 'What time is it?'",
+      es: "Intenta decir: 'Hola, ¿cómo estás?' o '¿Qué hora es?'",
+      fr: "Essayez de dire: 'Bonjour, comment allez-vous?' ou 'Quelle heure est-il?'",
+      de: "Versuchen Sie zu sagen: 'Hallo, wie geht es Ihnen?' oder 'Wie spät ist es?'",
+      ru: "Попробуйте сказать: 'Привет, как дела?' или 'Который час?'",
+      zh: "试着说: '你好，你好吗？' 或 '现在几点了？'",
+      ja: "試しに言ってみて: 'こんにちは、お元気ですか？' または '今何時ですか？'",
+      it: "Prova a dire: 'Ciao, come stai?' o 'Che ore sono?'",
+      pt: "Tente dizer: 'Olá, como você está?' ou 'Que horas são?'",
+      ar: "حاول أن تقول: 'مرحبا، كيف حالك؟' أو 'كم الساعة؟'",
+      hi: "कोशिश करें कहने की: 'नमस्ते, आप कैसे हैं?' या 'अभी क्या समय है?'",
+      ko: "이렇게 말해보세요: '안녕하세요, 어떻게 지내세요?' 또는 '지금 몇 시예요?'",
+    };
+
+    return (
+      examples[langCode] || 'Speak clearly in short phrases for best results'
+    );
   };
 
   // Timer effect for recording time limit

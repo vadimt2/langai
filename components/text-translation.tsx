@@ -93,21 +93,50 @@ export default function TextTranslation({
   const router = useRouter();
   const { pathname } = router;
 
-  // Initialize speech recognition
+  // Initialize additional state for Android detection
+  const [isAndroid, setIsAndroid] = useState(false);
+
+  // Detect Android device
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setIsAndroid(/Android/i.test(navigator.userAgent));
+    }
+  }, []);
+
+  // Initialize speech recognition with Android-specific handling
+  useEffect(() => {
+    let recognition: SpeechRecognition | null = null;
+
     if (typeof window !== 'undefined') {
       const SpeechRecognitionAPI =
         window.SpeechRecognition || window.webkitSpeechRecognition;
 
       if (SpeechRecognitionAPI) {
-        const recognition = new SpeechRecognitionAPI();
-        recognition.continuous = true;
-        recognition.interimResults = true;
+        // Configure recognition based on platform
+        recognition = new SpeechRecognitionAPI();
+
+        // On Android, we need different settings
+        if (isAndroid) {
+          recognition.continuous = false; // Use non-continuous mode for Android
+          recognition.interimResults = false; // Disable interim results on Android
+
+          // Use shorter phrases for better reliability on Android
+          recognition.maxAlternatives = 1;
+        } else {
+          // Desktop settings
+          recognition.continuous = true;
+          recognition.interimResults = true;
+        }
+
+        // Set language immediately
+        const exactLanguageCode = getLanguageCode(sourceLanguage);
+        recognition.lang = exactLanguageCode;
 
         recognition.onresult = (event: SpeechRecognitionEvent) => {
           const resultIndex = event.resultIndex;
           let transcript = '';
 
+          // Process results
           for (let i = resultIndex; i < event.results.length; i++) {
             if (event.results[i].isFinal) {
               transcript += event.results[i][0].transcript + ' ';
@@ -116,13 +145,35 @@ export default function TextTranslation({
 
           const finalText = transcript.trim();
           if (finalText) {
-            setInputText((prevText) => {
-              if (!prevText || prevText.length === 0) {
-                return finalText;
-              }
-              return prevText + ' ' + finalText;
-            });
+            // On Android, replace text if this is the first chunk or append with space
+            if (isAndroid) {
+              setInputText((prevText) => {
+                if (!prevText) return finalText;
+                return prevText + ' ' + finalText;
+              });
 
+              // On Android, restart recognition for continuous experience
+              try {
+                if (isListening) {
+                  recognition?.stop();
+                  setTimeout(() => {
+                    if (isListening && recognition) {
+                      recognition.start();
+                    }
+                  }, 300);
+                }
+              } catch (e) {
+                console.error('Error restarting Android recognition:', e);
+              }
+            } else {
+              // Desktop behavior
+              setInputText((prevText) => {
+                if (!prevText) return finalText;
+                return prevText + ' ' + finalText;
+              });
+            }
+
+            // Detect language for longer inputs
             if (finalText.length > 10) {
               detectLanguage(finalText);
             }
@@ -132,15 +183,49 @@ export default function TextTranslation({
         recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
           console.error('Speech recognition error:', event.error);
           setIsListening(false);
-          toast({
-            title: 'Voice Recording Error',
-            description: `Error: ${event.error}. Please try again.`,
-            variant: 'destructive',
-          });
+
+          // Don't show error for Android "no-speech" as we restart automatically
+          if (!(isAndroid && event.error === 'no-speech')) {
+            toast({
+              title: 'Voice Recording Error',
+              description: `Error: ${event.error}. Please try again.`,
+              variant: 'destructive',
+            });
+          }
+
+          // For Android, try to restart on certain errors
+          if (isAndroid && ['network', 'aborted'].includes(event.error)) {
+            try {
+              setTimeout(() => {
+                if (isListening && recognition) {
+                  recognition.start();
+                }
+              }, 300);
+            } catch (e) {
+              console.error(
+                'Failed to restart Android recognition after error'
+              );
+            }
+          }
         };
 
         recognition.onend = () => {
-          setIsListening(false);
+          // On Android, if still in listening mode, restart recognition
+          if (isAndroid && isListening) {
+            try {
+              setTimeout(() => {
+                if (isListening && recognition) {
+                  recognition.start();
+                }
+              }, 300);
+            } catch (e) {
+              console.error('Error restarting recognition on Android:', e);
+              setIsListening(false);
+            }
+          } else if (!isAndroid) {
+            // On desktop, just update state
+            setIsListening(false);
+          }
         };
 
         recognitionRef.current = recognition;
@@ -148,15 +233,15 @@ export default function TextTranslation({
     }
 
     return () => {
-      if (recognitionRef.current) {
+      if (recognition) {
         try {
-          recognitionRef.current.stop();
+          recognition.stop();
         } catch (e) {
           // Ignore errors on cleanup
         }
       }
     };
-  }, [toast]);
+  }, [sourceLanguage, isAndroid, isListening, toast]);
 
   // Get language code in BCP-47 format for speech recognition
   const getLanguageCode = (langCode: string): string => {
@@ -188,7 +273,7 @@ export default function TextTranslation({
     }
   };
 
-  // Start voice recording
+  // Start voice recording with Android optimizations
   const startRecording = () => {
     if (!recognitionRef.current) {
       toast({
@@ -201,21 +286,21 @@ export default function TextTranslation({
 
     try {
       // Clear the input text when starting a new recording session
-      if (!isListening) {
-        setInputText('');
-        setDetectedLanguage(null);
-      }
+      setInputText('');
+      setDetectedLanguage(null);
 
-      // Set the language for speech recognition
+      // Always update the language before starting
       const exactLanguageCode = getLanguageCode(sourceLanguage);
       recognitionRef.current.lang = exactLanguageCode;
 
-      // Show toast message
+      // Show toast with platform-specific guidance
       toast({
         title: `Listening in ${
           getLanguageByCode(sourceLanguage)?.name || sourceLanguage
         }`,
-        description: 'Speak clearly for best results',
+        description: isAndroid
+          ? 'Speak in short phrases for best results'
+          : 'Speak clearly for best results',
         duration: 3000,
       });
 
@@ -232,16 +317,22 @@ export default function TextTranslation({
     }
   };
 
-  // Stop voice recording
+  // Stop recording with special handling for Android
   const stopRecording = () => {
     if (recognitionRef.current) {
       try {
         recognitionRef.current.stop();
+        // On Android, we need to explicitly set the state since onend might try to restart
+        if (isAndroid) {
+          setIsListening(false);
+        }
       } catch (e) {
         console.error('Error stopping recognition:', e);
+        setIsListening(false);
       }
+    } else {
+      setIsListening(false);
     }
-    setIsListening(false);
   };
 
   const handleTranslate = async () => {
