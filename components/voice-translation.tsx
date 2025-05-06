@@ -54,6 +54,7 @@ export default function VoiceTranslation({
   } = useRecaptchaContext();
   const [isAndroid, setIsAndroid] = useState(false);
   const [detectedWrongLanguage, setDetectedWrongLanguage] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
 
   // Detect Android specifically
   useEffect(() => {
@@ -88,14 +89,18 @@ export default function VoiceTranslation({
         // Check if the detected text appears to be in the wrong language
         if (isAndroid && checkLanguageMismatch(finalText)) {
           setDetectedWrongLanguage(true);
-          // Don't stop recording, but show a warning
+
+          // Show options to the user
           toast({
-            title: 'Language Detection Issue',
+            title: 'Wrong Language Detected',
             description: `Android detected English instead of ${
               getLanguageByCode(sourceLanguage)?.name
-            }. You may need to use manual input.`,
+            }. Converting automatically...`,
             duration: 5000,
           });
+
+          // Auto-translate the English text to the selected language
+          autoCorrectLanguage(finalText);
         } else {
           setDetectedWrongLanguage(false);
         }
@@ -463,6 +468,75 @@ export default function VoiceTranslation({
     return false;
   };
 
+  // Add function to automatically translate misdetected English text to the selected language
+  const autoCorrectLanguage = async (englishText: string) => {
+    if (!englishText.trim() || sourceLanguage === 'en') return;
+
+    setIsTranscribing(true);
+    try {
+      // Show toast to inform user about auto-correction
+      toast({
+        title: 'Converting to correct language',
+        description: `Converting detected English to ${
+          getLanguageByCode(sourceLanguage)?.name
+        }...`,
+        duration: 3000,
+      });
+
+      const recaptchaToken = recaptchaLoaded ? await getToken('translate') : '';
+
+      const response = await fetch('/api/translate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: englishText,
+          sourceLanguage: 'en', // The text was detected as English
+          targetLanguage: sourceLanguage, // Convert to the language user selected
+          model,
+          recaptchaToken,
+        }),
+      });
+
+      const responseText = await response.text();
+      let data;
+
+      try {
+        data = JSON.parse(responseText);
+      } catch (e) {
+        console.error('Failed to parse response as JSON:', e);
+        throw new Error(`Invalid JSON response`);
+      }
+
+      if (!response.ok || !data.translatedText) {
+        throw new Error(data.error || 'Translation failed');
+      }
+
+      // Update the recorded text with the translated version
+      setRecordedText(data.translatedText);
+      setDetectedWrongLanguage(false);
+
+      toast({
+        title: 'Converted Successfully',
+        description: `Speech has been converted to ${
+          getLanguageByCode(sourceLanguage)?.name
+        }`,
+        variant: 'default',
+      });
+    } catch (error) {
+      console.error('Auto-correction error:', error);
+      toast({
+        title: 'Conversion Error',
+        description:
+          error instanceof Error ? error.message : 'Failed to convert language',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
   return (
     <div className='space-y-4 mt-4'>
       <div className='flex flex-col items-center space-y-4'>
@@ -529,30 +603,56 @@ export default function VoiceTranslation({
         {detectedWrongLanguage && !showManualInput && (
           <div className='w-full max-w-md p-3 bg-amber-50 border border-amber-200 rounded-md'>
             <p className='text-sm text-amber-700 text-center'>
-              <strong>Language Mismatch Detected:</strong> Android appears to be
-              recognizing English instead of{' '}
-              {getLanguageByCode(sourceLanguage)?.name}.
+              <strong>Language Mismatch Detected:</strong>{' '}
+              {isTranscribing ? (
+                <>
+                  Converting English to{' '}
+                  {getLanguageByCode(sourceLanguage)?.name}...
+                </>
+              ) : (
+                <>
+                  Android recognized English instead of{' '}
+                  {getLanguageByCode(sourceLanguage)?.name}.
+                </>
+              )}
             </p>
             <div className='flex justify-center mt-2 space-x-2'>
-              <Button
-                variant='outline'
-                size='sm'
-                onClick={() => setShowManualInput(true)}
-                className='text-xs'
-              >
-                Switch to Manual Input
-              </Button>
-              <Button
-                variant='ghost'
-                size='sm'
-                onClick={() => {
-                  setDetectedWrongLanguage(false);
-                  setRecordedText('');
-                }}
-                className='text-xs'
-              >
-                Try Again
-              </Button>
+              {isTranscribing ? (
+                <div className='flex items-center space-x-2'>
+                  <Loader2 className='h-4 w-4 animate-spin' />
+                  <span className='text-xs'>Converting...</span>
+                </div>
+              ) : (
+                <>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    onClick={() => setShowManualInput(true)}
+                    className='text-xs'
+                  >
+                    Manual Input
+                  </Button>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    onClick={() => autoCorrectLanguage(recordedText)}
+                    className='text-xs'
+                  >
+                    Try Auto-Convert
+                  </Button>
+                  <Button
+                    variant='ghost'
+                    size='sm'
+                    onClick={() => {
+                      setDetectedWrongLanguage(false);
+                      setRecordedText('');
+                    }}
+                    className='text-xs'
+                  >
+                    Cancel
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         )}
