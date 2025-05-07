@@ -135,6 +135,9 @@ export default function TextTranslation({
   // Add a timer for auto-stopping if no speech is detected
   const noSpeechTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Add a new ref to track if we're in the middle of a restart
+  const isRestartingRef = useRef<boolean>(false);
+
   // Detect Android device
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -259,6 +262,9 @@ export default function TextTranslation({
       noSpeechTimerRef.current = null;
     }
 
+    // Reset restarting flag
+    isRestartingRef.current = false;
+
     // Then clean up the recognition object
     if (recognitionRef.current) {
       try {
@@ -297,6 +303,12 @@ export default function TextTranslation({
   // Create and start a completely fresh recognition instance
   const createAndStartNewRecognition = () => {
     console.log('Creating a fresh recognition instance');
+
+    // If we're already restarting, don't create another instance
+    if (isRestartingRef.current) {
+      console.log('Already restarting, skipping new instance creation');
+      return;
+    }
 
     // Make sure we're clean first
     stopRecognitionCompletely();
@@ -431,9 +443,18 @@ export default function TextTranslation({
               silenceTimerRef.current = null;
             }
 
+            // Set restarting flag
+            isRestartingRef.current = true;
+
             // Restart recognition for continuous experience on Android
             if (isListening && isMountedRef.current) {
-              createAndStartNewRecognition();
+              // Use a longer delay for Android to ensure clean restart
+              setTimeout(() => {
+                if (isMountedRef.current && isListening) {
+                  isRestartingRef.current = false;
+                  createAndStartNewRecognition();
+                }
+              }, RECORDING_RESTART_DELAY * 1.5); // Increase delay for Android
             }
           }
         };
@@ -473,9 +494,13 @@ export default function TextTranslation({
           ) {
             restartAttemptsRef.current++;
 
+            // Set restarting flag
+            isRestartingRef.current = true;
+
             // Wait before retrying
             setTimeout(() => {
               if (isListening && isMountedRef.current) {
+                isRestartingRef.current = false;
                 createAndStartNewRecognition();
               }
             }, RECORDING_RESTART_DELAY);
@@ -504,7 +529,8 @@ export default function TextTranslation({
             isAndroid &&
             isListening &&
             isMountedRef.current &&
-            restartAttemptsRef.current < MAX_RESTART_ATTEMPTS
+            restartAttemptsRef.current < MAX_RESTART_ATTEMPTS &&
+            !isRestartingRef.current // Only restart if we're not already restarting
           ) {
             console.log('Scheduling new recognition instance after end event');
 
@@ -526,9 +552,13 @@ export default function TextTranslation({
               noSpeechTimerRef.current = null;
             }
 
+            // Set restarting flag
+            isRestartingRef.current = true;
+
             // Wait before creating a new instance
             setTimeout(() => {
               if (isListening && isMountedRef.current) {
+                isRestartingRef.current = false;
                 createAndStartNewRecognition();
               }
             }, RECORDING_RESTART_DELAY);
@@ -571,7 +601,7 @@ export default function TextTranslation({
           variant: 'destructive',
         });
       }
-    }, 100); // Reduce from RECORDING_CLEANUP_TIMEOUT to 100ms for faster startup
+    }, 100);
   };
 
   // Get language code in BCP-47 format for speech recognition
